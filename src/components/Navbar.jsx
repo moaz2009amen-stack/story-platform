@@ -3,7 +3,7 @@ import { motion } from 'framer-motion'
 
 export default function Navbar({ theme, toggleTheme }) {
   return (
-    <nav className="sticky top-0 z-50 bg-white/80 dark:bg-dramatic-900/80 backdrop-blur-md border-b border-gray-200 dark:border-dramatic-800">
+    <nav className="sticky top-0 z-50 bg-white/80 dark:bg-gray-900/80 backdrop-blur-md border-b border-gray-200 dark:border-gray-800">
       <div className="container mx-auto px-4 py-4">
         <div className="flex items-center justify-between">
           <Link to="/">
@@ -16,13 +16,20 @@ export default function Navbar({ theme, toggleTheme }) {
             </motion.h1>
           </Link>
           
-          <div className="flex items-center gap-4">
-            <Link to="/create" className="hidden md:block text-gray-600 dark:text-gray-400 hover:text-purple-600 dark:hover:text-purple-400 transition-colors">
-              اكتب قصتك
+          <div className="flex items-center gap-2 md:gap-4">
+            <Link to="/explore" className="hidden md:block text-gray-600 dark:text-gray-400 hover:text-purple-600 dark:hover:text-purple-400 transition-colors">
+              📚 المكتبة
             </Link>
+            <Link to="/profile" className="hidden md:block text-gray-600 dark:text-gray-400 hover:text-purple-600 dark:hover:text-purple-400 transition-colors">
+              👤 حسابي
+            </Link>
+            <Link to="/create" className="hidden md:block text-gray-600 dark:text-gray-400 hover:text-purple-600 dark:hover:text-purple-400 transition-colors">
+              ✍️ اكتب
+            </Link>
+            
             <button
               onClick={toggleTheme}
-              className="p-2 rounded-lg bg-gray-200 dark:bg-dramatic-700 hover:bg-gray-300 dark:hover:bg-dramatic-600 transition-colors"
+              className="p-2 rounded-lg bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
               aria-label="تغيير السمة"
             >
               {theme === 'dark' ? '☀️' : '🌙'}
