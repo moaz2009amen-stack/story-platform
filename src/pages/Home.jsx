@@ -1,7 +1,9 @@
 import { motion } from 'framer-motion'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 
 export default function Home() {
+  const navigate = useNavigate()
+
   return (
     <div className="container mx-auto px-4 py-8 md:py-16">
       {/* Hero Section */}
@@ -58,6 +60,46 @@ export default function Home() {
             </p>
           </motion.div>
         ))}
+      </motion.section>
+
+      {/* Demo Stories Section */}
+      <motion.section 
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ delay: 0.5, duration: 0.6 }}
+        className="mb-16"
+      >
+        <h3 className="text-3xl font-bold text-center mb-8 text-gray-800 dark:text-gray-200">
+          📚 قصص مقترحة
+        </h3>
+        
+        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {demoStories.map((story) => (
+            <motion.div
+              key={story.id}
+              whileHover={{ scale: 1.02 }}
+              className="story-card cursor-pointer"
+              onClick={() => navigate(`/story/${story.id}`)}
+            >
+              <div className="relative h-48">
+                <img 
+                  src={story.cover} 
+                  alt={story.title}
+                  className="w-full h-full object-cover"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent"></div>
+                <h4 className="absolute bottom-4 right-4 left-4 text-white font-bold text-xl">
+                  {story.title}
+                </h4>
+              </div>
+              <div className="p-4">
+                <p className="text-gray-600 dark:text-gray-400 line-clamp-3">
+                  {story.description}
+                </p>
+              </div>
+            </motion.div>
+          ))}
+        </div>
       </motion.section>
 
       {/* How It Works */}
@@ -138,5 +180,26 @@ const steps = [
   {
     title: 'اكتشف النهاية',
     description: 'كل اختيار يقودك إلى نهاية مختلفة'
+  }
+]
+
+const demoStories = [
+  {
+    id: 'demo-1',
+    title: 'الغابة المسحورة',
+    description: 'مغامرة في غابة مليئة بالأسرار...',
+    cover: 'https://images.pexels.com/photos/1671324/pexels-photo-1671324.jpeg'
+  },
+  {
+    id: 'demo-2',
+    title: 'القلعة المهجورة',
+    description: 'استكشف قلعة قديمة واكتشف أسرارها...',
+    cover: 'https://images.pexels.com/photos/2088203/pexels-photo-2088203.jpeg'
+  },
+  {
+    id: 'demo-3',
+    title: 'سر الجزيرة',
+    description: 'تصل إلى جزيرة غامضة بعد غرق سفينتك...',
+    cover: 'https://images.pexels.com/photos/189349/pexels-photo-189349.jpeg'
   }
 ]
