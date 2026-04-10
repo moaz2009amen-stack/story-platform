@@ -1,11 +1,24 @@
-import React, { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { motion } from 'framer-motion'
 
 export default function AdminDashboard() {
   const [password, setPassword] = useState('')
   const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [stories, setStories] = useState([])
   const ADMIN_PASSWORD = 'moaz2024story'
 
-  const handleLogin = (e) => {
+  useEffect(() => {
+    if (isAuthenticated) {
+      loadStories()
+    }
+  }, [isAuthenticated])
+
+  function loadStories() {
+    const userStories = JSON.parse(localStorage.getItem('userStories') || '[]')
+    setStories(userStories)
+  }
+
+  function handleLogin(e) {
     e.preventDefault()
     if (password === ADMIN_PASSWORD) {
       setIsAuthenticated(true)
@@ -14,11 +27,22 @@ export default function AdminDashboard() {
     }
   }
 
+  function deleteStory(storyId) {
+    if (!confirm('هل أنت متأكد من حذف هذه القصة؟')) return
+    const updated = stories.filter(s => s.id !== storyId)
+    localStorage.setItem('userStories', JSON.stringify(updated))
+    setStories(updated)
+  }
+
   if (!isAuthenticated) {
     return (
-      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#1a1a2e' }}>
-        <div style={{ backgroundColor: '#16213e', padding: '30px', borderRadius: '20px', width: '100%', maxWidth: '400px' }}>
-          <h2 style={{ color: 'white', textAlign: 'center', marginBottom: '20px' }}>
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="bg-white dark:bg-gray-800 p-8 rounded-2xl shadow-xl max-w-md w-full"
+        >
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-6 text-center">
             🔐 لوحة التحكم
           </h2>
           <form onSubmit={handleLogin}>
@@ -26,33 +50,73 @@ export default function AdminDashboard() {
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              style={{ width: '100%', padding: '12px', borderRadius: '10px', border: '1px solid #0f3460', backgroundColor: '#1a1a2e', color: 'white', marginBottom: '20px' }}
+              className="w-full px-4 py-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white mb-4 focus:ring-2 focus:ring-purple-500"
               placeholder="أدخل كلمة المرور"
               autoFocus
             />
-            <button type="submit" style={{ width: '100%', padding: '15px', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', color: 'white', border: 'none', borderRadius: '10px', fontWeight: 'bold', cursor: 'pointer' }}>
+            <button 
+              type="submit" 
+              className="w-full bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-bold py-3 px-6 rounded-lg hover:from-purple-700 hover:to-indigo-700 transition-all"
+            >
               دخول
             </button>
           </form>
-        </div>
+        </motion.div>
       </div>
     )
   }
 
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: '#1a1a2e', color: 'white', padding: '40px 20px' }}>
-      <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px' }}>
-          <h1 style={{ fontSize: '32px' }}>
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 py-8">
+      <div className="container mx-auto px-4 max-w-6xl">
+        <div className="flex items-center justify-between mb-8">
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
             👑 لوحة التحكم - المشرف
           </h1>
-          <button onClick={() => setIsAuthenticated(false)} style={{ color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer', fontSize: '16px' }}>
+          <button
+            onClick={() => setIsAuthenticated(false)}
+            className="text-red-500 hover:text-red-600 transition-colors"
+          >
             تسجيل خروج
           </button>
         </div>
-        <p style={{ textAlign: 'center', color: '#a0aec0' }}>
-          جاري تحميل القصص...
-        </p>
+
+        <div className="grid gap-4">
+          {stories.map((story) => (
+            <motion.div
+              key={story.id}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow flex items-center justify-between"
+            >
+              <div>
+                <h3 className="font-bold text-gray-900 dark:text-white">
+                  {story.title}
+                </h3>
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  {story.description?.substring(0, 50)}...
+                </p>
+                <p className="text-xs text-gray-400 mt-1">
+                  {new Date(story.created_at).toLocaleDateString('ar-EG')}
+                </p>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => deleteStory(story.id)}
+                  className="px-3 py-1 rounded bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 text-sm hover:bg-red-200 dark:hover:bg-red-900/50 transition-colors"
+                >
+                  حذف
+                </button>
+              </div>
+            </motion.div>
+          ))}
+          
+          {stories.length === 0 && (
+            <p className="text-center text-gray-500 dark:text-gray-400 py-8">
+              لا توجد قصص بعد
+            </p>
+          )}
+        </div>
       </div>
     </div>
   )
