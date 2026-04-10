@@ -17,8 +17,8 @@ export default function Navbar({ theme, toggleTheme }) {
           </Link>
           
           <div className="flex items-center gap-4">
-            <Link to="/dashboard" className="hidden md:block text-gray-600 dark:text-gray-400 hover:text-purple-600 dark:hover:text-purple-400 transition-colors">
-              لوحة التحكم
+            <Link to="/create" className="hidden md:block text-gray-600 dark:text-gray-400 hover:text-purple-600 dark:hover:text-purple-400 transition-colors">
+              اكتب قصتك
             </Link>
             <button
               onClick={toggleTheme}
@@ -28,7 +28,7 @@ export default function Navbar({ theme, toggleTheme }) {
               {theme === 'dark' ? '☀️' : '🌙'}
             </button>
             
-            <Link to="/dashboard" className="btn-primary hidden md:block">
+            <Link to="/create" className="btn-primary hidden md:block">
               ✍️ ابدأ الكتابة
             </Link>
           </div>
