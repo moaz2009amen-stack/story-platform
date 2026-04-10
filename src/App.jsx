@@ -10,13 +10,7 @@ const Explore = lazy(() => import('./pages/Explore'))
 const Profile = lazy(() => import('./pages/Profile'))
 const Auth = lazy(() => import('./pages/Auth'))
 const NotFound = lazy(() => import('./pages/NotFound'))
-
-// Admin Pages
 const AdminDashboard = lazy(() => import('./pages/admin/AdminDashboard'))
-const StoriesManager = lazy(() => import('./pages/admin/StoriesManager'))
-const UsersManager = lazy(() => import('./pages/admin/UsersManager'))
-const SettingsPage = lazy(() => import('./pages/admin/SettingsPage'))
-const AnalyticsPage = lazy(() => import('./pages/admin/AnalyticsPage'))
 
 const LoadingSpinner = () => (
   <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
@@ -49,29 +43,32 @@ function App() {
   return (
     <Router>
       <div className="min-h-screen flex flex-col">
-        <Navbar theme={theme} toggleTheme={toggleTheme} />
-        <main className="flex-grow">
-          <Suspense fallback={<LoadingSpinner />}>
-            <Routes>
-              <Route path="/" element={<Home />} />
-              <Route path="/explore" element={<Explore />} />
-              <Route path="/profile" element={<Profile />} />
-              <Route path="/auth" element={<Auth />} />
-              <Route path="/story/:storyId" element={<StoryPlayer />} />
-              <Route path="/create" element={<CreateStory />} />
-              
-              {/* Admin Routes */}
-              <Route path="/moaz-admin" element={<AdminDashboard />} />
-              <Route path="/moaz-admin/stories" element={<StoriesManager />} />
-              <Route path="/moaz-admin/users" element={<UsersManager />} />
-              <Route path="/moaz-admin/settings" element={<SettingsPage />} />
-              <Route path="/moaz-admin/analytics" element={<AnalyticsPage />} />
-              
-              <Route path="*" element={<NotFound />} />
-            </Routes>
-          </Suspense>
-        </main>
-        <Footer />
+        {/* Navbar مش هيظهر في لوحة التحكم لأنها صفحة منفصلة */}
+        <Routes>
+          {/* Admin Route - منفصلة تماماً */}
+          <Route path="/moaz-admin" element={<AdminDashboard />} />
+          
+          {/* الموقع العادي */}
+          <Route path="*" element={
+            <>
+              <Navbar theme={theme} toggleTheme={toggleTheme} />
+              <main className="flex-grow">
+                <Suspense fallback={<LoadingSpinner />}>
+                  <Routes>
+                    <Route path="/" element={<Home />} />
+                    <Route path="/explore" element={<Explore />} />
+                    <Route path="/profile" element={<Profile />} />
+                    <Route path="/auth" element={<Auth />} />
+                    <Route path="/story/:storyId" element={<StoryPlayer />} />
+                    <Route path="/create" element={<CreateStory />} />
+                    <Route path="*" element={<NotFound />} />
+                  </Routes>
+                </Suspense>
+              </main>
+              <Footer />
+            </>
+          } />
+        </Routes>
       </div>
     </Router>
   )
