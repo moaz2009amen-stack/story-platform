@@ -1,18 +1,49 @@
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom'
 import { useState, useEffect } from 'react'
 import Home from './pages/Home'
-import StoryPlayer from './pages/StoryPlayer'
-import CreateStory from './pages/CreateStory'
-import AdminDashboard from './pages/AdminDashboard'
 import Navbar from './components/Navbar'
 import Footer from './components/Footer'
 
+// تعريف مكون CreateStory مباشرة هنا
+function CreateStory() {
+  return (
+    <div style={{ minHeight: '100vh', backgroundColor: '#1a1a2e', color: 'white', padding: '40px' }}>
+      <h1>✍️ صفحة إنشاء القصة تعمل!</h1>
+      <p>هذه نسخة مدمجة في App.jsx</p>
+      <button onClick={() => window.location.href = '/'} style={{ padding: '10px', marginTop: '20px' }}>
+        العودة للرئيسية
+      </button>
+    </div>
+  )
+}
+
+// تعريف مكون AdminDashboard مباشرة هنا
+function AdminDashboard() {
+  const [password, setPassword] = useState('')
+  const [loggedIn, setLoggedIn] = useState(false)
+
+  if (!loggedIn) {
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#1a1a2e' }}>
+        <form onSubmit={(e) => { e.preventDefault(); if (password === 'moaz2024story') setLoggedIn(true); else alert('خطأ'); }}>
+          <input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="كلمة المرور" />
+          <button type="submit">دخول</button>
+        </form>
+      </div>
+    )
+  }
+  return <div style={{ color: 'white', padding: '40px' }}><h1>👑 لوحة التحكم</h1></div>
+}
+
+// تعريف StoryPlayer بسيط
+function StoryPlayer() {
+  return <div style={{ color: 'white', padding: '40px' }}><h1>🎮 قارئ القصة</h1></div>
+}
+
 function App() {
   const [theme, setTheme] = useState(() => {
-    if (typeof window !== 'undefined') {
-      return localStorage.getItem('theme') || 'dark'
-    }
-    return 'dark'
+    const savedTheme = localStorage.getItem('theme')
+    return savedTheme || 'dark'
   })
 
   useEffect(() => {
@@ -21,9 +52,7 @@ function App() {
     } else {
       document.documentElement.classList.remove('dark')
     }
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('theme', theme)
-    }
+    localStorage.setItem('theme', theme)
   }, [theme])
 
   const toggleTheme = () => {
