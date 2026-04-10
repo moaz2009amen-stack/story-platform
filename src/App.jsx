@@ -2,7 +2,8 @@ import { BrowserRouter as Router, Routes, Route } from 'react-router-dom'
 import { useState, useEffect } from 'react'
 import Home from './pages/Home'
 import StoryPlayer from './pages/StoryPlayer'
-import Dashboard from './pages/Dashboard'
+import CreateStory from './pages/CreateStory'
+import AdminDashboard from './pages/AdminDashboard'
 import Navbar from './components/Navbar'
 import Footer from './components/Footer'
 
@@ -33,7 +34,8 @@ function App() {
           <Routes>
             <Route path="/" element={<Home />} />
             <Route path="/story/:storyId" element={<StoryPlayer />} />
-            <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/create" element={<CreateStory />} />
+            <Route path="/moaz-admin" element={<AdminDashboard />} />
           </Routes>
         </main>
         <Footer />
