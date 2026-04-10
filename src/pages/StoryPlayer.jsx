@@ -12,6 +12,7 @@ export default function StoryPlayer() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [history, setHistory] = useState([])
+  const [language, setLanguage] = useState('ar')
 
   useEffect(() => {
     loadStory()
@@ -21,7 +22,6 @@ export default function StoryPlayer() {
     try {
       setLoading(true)
       
-      // جلب القصة
       const { data: storyData, error: storyError } = await supabase
         .from('stories')
         .select('*')
@@ -31,7 +31,6 @@ export default function StoryPlayer() {
       if (storyError) throw storyError
       setStory(storyData)
 
-      // جلب أول مشهد
       const { data: nodesData, error: nodesError } = await supabase
         .from('nodes')
         .select('*')
@@ -52,10 +51,8 @@ export default function StoryPlayer() {
 
   async function handleChoice(choice) {
     try {
-      // حفظ المشهد الحالي في التاريخ
       setHistory([...history, currentNode.id])
 
-      // جلب المشهد التالي
       const { data: nextNode, error } = await supabase
         .from('nodes')
         .select('*')
@@ -134,15 +131,14 @@ export default function StoryPlayer() {
     )
   }
 
-  const content = currentNode.content
-  const isArabic = true // يمكن تغييرها حسب اللغة المختارة
-  const nodeText = isArabic ? content?.ar : content?.en
+  const content = currentNode.content || {}
+  const nodeText = language === 'ar' ? content?.ar : content?.en
+  const title = language === 'ar' ? story.title?.ar : story.title?.en
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-dramatic-900 py-8">
       <div className="container mx-auto px-4 max-w-4xl">
         
-        {/* Header */}
         <div className="mb-6 flex items-center justify-between">
           <button
             onClick={() => navigate('/')}
@@ -152,6 +148,12 @@ export default function StoryPlayer() {
           </button>
           
           <div className="flex gap-2">
+            <button
+              onClick={() => setLanguage(language === 'ar' ? 'en' : 'ar')}
+              className="px-4 py-2 bg-gray-200 dark:bg-dramatic-700 rounded-lg hover:bg-gray-300 dark:hover:bg-dramatic-600 transition-colors"
+            >
+              {language === 'ar' ? 'English' : 'عربي'}
+            </button>
             {history.length > 0 && (
               <button
                 onClick={handleGoBack}
@@ -169,12 +171,10 @@ export default function StoryPlayer() {
           </div>
         </div>
 
-        {/* Story Title */}
         <h2 className="text-2xl font-bold mb-6 text-gray-800 dark:text-gray-200">
-          {isArabic ? story.title?.ar : story.title?.en}
+          {title}
         </h2>
 
-        {/* Scene Content */}
         <AnimatePresence mode="wait">
           <motion.div
             key={currentNode.id}
@@ -184,7 +184,6 @@ export default function StoryPlayer() {
             transition={{ duration: 0.3 }}
             className="bg-white dark:bg-dramatic-800 rounded-2xl shadow-xl overflow-hidden"
           >
-            {/* Scene Image */}
             {currentNode.image && (
               <div className="relative h-64 md:h-96">
                 <img
@@ -196,17 +195,15 @@ export default function StoryPlayer() {
               </div>
             )}
 
-            {/* Scene Text */}
             <div className="p-6 md:p-8">
               <p className="text-lg md:text-xl leading-relaxed text-gray-800 dark:text-gray-200 mb-8">
                 {nodeText}
               </p>
 
-              {/* Choices */}
               {!currentNode.is_ending ? (
                 <div className="space-y-3">
                   <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">
-                    اختر مسارك:
+                    {language === 'ar' ? 'اختر مسارك:' : 'Choose your path:'}
                   </p>
                   {currentNode.choices?.map((choice, index) => (
                     <motion.button
@@ -217,7 +214,7 @@ export default function StoryPlayer() {
                       onClick={() => handleChoice(choice)}
                       className="choice-button"
                     >
-                      {isArabic ? choice.text_ar : choice.text_en}
+                      {language === 'ar' ? choice.text_ar : choice.text_en}
                     </motion.button>
                   ))}
                 </div>
@@ -228,19 +225,19 @@ export default function StoryPlayer() {
                      currentNode.ending_type === 'bad' ? '💀' : '📖'}
                   </div>
                   <p className="text-xl font-bold mb-4 text-gray-800 dark:text-gray-200">
-                    {isArabic ? 'النهاية' : 'The End'}
+                    {language === 'ar' ? 'النهاية' : 'The End'}
                   </p>
                   {currentNode.ending_message && (
                     <p className="text-gray-600 dark:text-gray-400 mb-6">
-                      {isArabic ? currentNode.ending_message?.ar : currentNode.ending_message?.en}
+                      {language === 'ar' ? currentNode.ending_message?.ar : currentNode.ending_message?.en}
                     </p>
                   )}
                   <div className="flex gap-4 justify-center">
                     <button onClick={handleRestart} className="btn-primary">
-                      🔄 ابدأ من جديد
+                      {language === 'ar' ? '🔄 ابدأ من جديد' : '🔄 Start Over'}
                     </button>
                     <button onClick={() => navigate('/')} className="btn-secondary">
-                      📚 اختر قصة أخرى
+                      {language === 'ar' ? '📚 اختر قصة أخرى' : '📚 Choose Another Story'}
                     </button>
                   </div>
                 </div>
@@ -249,10 +246,9 @@ export default function StoryPlayer() {
           </motion.div>
         </AnimatePresence>
 
-        {/* Progress Indicator */}
         {!currentNode.is_ending && (
           <div className="mt-4 text-center text-sm text-gray-500 dark:text-gray-400">
-            المشهد {history.length + 1}
+            {language === 'ar' ? `المشهد ${history.length + 1}` : `Scene ${history.length + 1}`}
           </div>
         )}
       </div>
