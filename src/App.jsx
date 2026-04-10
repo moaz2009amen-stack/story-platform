@@ -4,15 +4,20 @@ import Home from './pages/Home'
 import Navbar from './components/Navbar'
 import Footer from './components/Footer'
 
-// Code Splitting باستخدام React.lazy
 const StoryPlayer = lazy(() => import('./pages/StoryPlayer'))
 const CreateStory = lazy(() => import('./pages/CreateStory'))
-const AdminDashboard = lazy(() => import('./pages/AdminDashboard'))
 const Explore = lazy(() => import('./pages/Explore'))
 const Profile = lazy(() => import('./pages/Profile'))
+const Auth = lazy(() => import('./pages/Auth'))
 const NotFound = lazy(() => import('./pages/NotFound'))
 
-// مكون تحميل مؤقت
+// Admin Pages
+const AdminDashboard = lazy(() => import('./pages/admin/AdminDashboard'))
+const StoriesManager = lazy(() => import('./pages/admin/StoriesManager'))
+const UsersManager = lazy(() => import('./pages/admin/UsersManager'))
+const SettingsPage = lazy(() => import('./pages/admin/SettingsPage'))
+const AnalyticsPage = lazy(() => import('./pages/admin/AnalyticsPage'))
+
 const LoadingSpinner = () => (
   <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
     <div className="text-center">
@@ -51,9 +56,17 @@ function App() {
               <Route path="/" element={<Home />} />
               <Route path="/explore" element={<Explore />} />
               <Route path="/profile" element={<Profile />} />
+              <Route path="/auth" element={<Auth />} />
               <Route path="/story/:storyId" element={<StoryPlayer />} />
               <Route path="/create" element={<CreateStory />} />
+              
+              {/* Admin Routes */}
               <Route path="/moaz-admin" element={<AdminDashboard />} />
+              <Route path="/moaz-admin/stories" element={<StoriesManager />} />
+              <Route path="/moaz-admin/users" element={<UsersManager />} />
+              <Route path="/moaz-admin/settings" element={<SettingsPage />} />
+              <Route path="/moaz-admin/analytics" element={<AnalyticsPage />} />
+              
               <Route path="*" element={<NotFound />} />
             </Routes>
           </Suspense>
