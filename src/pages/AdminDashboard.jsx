@@ -1,12 +1,11 @@
-import { useState } from 'react'
-import { motion } from 'framer-motion'
+import React, { useState } from 'react'
 
 export default function AdminDashboard() {
   const [password, setPassword] = useState('')
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const ADMIN_PASSWORD = 'moaz2024story'
 
-  function handleLogin(e) {
+  const handleLogin = (e) => {
     e.preventDefault()
     if (password === ADMIN_PASSWORD) {
       setIsAuthenticated(true)
@@ -17,13 +16,9 @@ export default function AdminDashboard() {
 
   if (!isAuthenticated) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-dramatic-900">
-        <motion.div
-          initial={{ opacity: 0, scale: 0.9 }}
-          animate={{ opacity: 1, scale: 1 }}
-          className="bg-white dark:bg-dramatic-800 p-8 rounded-2xl shadow-xl max-w-md w-full"
-        >
-          <h2 className="text-2xl font-bold text-gray-800 dark:text-gray-200 mb-6 text-center">
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#1a1a2e' }}>
+        <div style={{ backgroundColor: '#16213e', padding: '30px', borderRadius: '20px', width: '100%', maxWidth: '400px' }}>
+          <h2 style={{ color: 'white', textAlign: 'center', marginBottom: '20px' }}>
             🔐 لوحة التحكم
           </h2>
           <form onSubmit={handleLogin}>
@@ -31,34 +26,31 @@ export default function AdminDashboard() {
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-4 py-3 rounded-lg border border-gray-300 dark:border-dramatic-600 bg-white dark:bg-dramatic-700 text-gray-800 dark:text-gray-200 mb-4"
+              style={{ width: '100%', padding: '12px', borderRadius: '10px', border: '1px solid #0f3460', backgroundColor: '#1a1a2e', color: 'white', marginBottom: '20px' }}
               placeholder="أدخل كلمة المرور"
               autoFocus
             />
-            <button type="submit" className="btn-primary w-full">
+            <button type="submit" style={{ width: '100%', padding: '15px', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', color: 'white', border: 'none', borderRadius: '10px', fontWeight: 'bold', cursor: 'pointer' }}>
               دخول
             </button>
           </form>
-        </motion.div>
+        </div>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-dramatic-900 py-8">
-      <div className="container mx-auto px-4 max-w-6xl">
-        <div className="flex items-center justify-between mb-8">
-          <h1 className="text-3xl font-bold text-gray-800 dark:text-gray-200">
+    <div style={{ minHeight: '100vh', backgroundColor: '#1a1a2e', color: 'white', padding: '40px 20px' }}>
+      <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px' }}>
+          <h1 style={{ fontSize: '32px' }}>
             👑 لوحة التحكم - المشرف
           </h1>
-          <button
-            onClick={() => setIsAuthenticated(false)}
-            className="text-red-500 hover:text-red-600"
-          >
+          <button onClick={() => setIsAuthenticated(false)} style={{ color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer', fontSize: '16px' }}>
             تسجيل خروج
           </button>
         </div>
-        <p className="text-center text-gray-500 dark:text-gray-400 py-8">
+        <p style={{ textAlign: 'center', color: '#a0aec0' }}>
           جاري تحميل القصص...
         </p>
       </div>
