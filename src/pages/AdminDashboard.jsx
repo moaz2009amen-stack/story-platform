@@ -1,23 +1,10 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { motion } from 'framer-motion'
 
 export default function AdminDashboard() {
-  const [allStories, setAllStories] = useState([])
   const [password, setPassword] = useState('')
   const [isAuthenticated, setIsAuthenticated] = useState(false)
-  
-  const ADMIN_PASSWORD = 'moaz2024story' // غيرها للي تحبه
-
-  useEffect(() => {
-    if (isAuthenticated) {
-      loadAllStories()
-    }
-  }, [isAuthenticated])
-
-  function loadAllStories() {
-    const userStories = JSON.parse(localStorage.getItem('userStories') || '[]')
-    setAllStories(userStories)
-  }
+  const ADMIN_PASSWORD = 'moaz2024story'
 
   function handleLogin(e) {
     e.preventDefault()
@@ -26,22 +13,6 @@ export default function AdminDashboard() {
     } else {
       alert('كلمة المرور غير صحيحة')
     }
-  }
-
-  function deleteStory(storyId) {
-    if (!confirm('هل أنت متأكد من حذف هذه القصة؟')) return
-    
-    const updated = allStories.filter(s => s.id !== storyId)
-    localStorage.setItem('userStories', JSON.stringify(updated))
-    setAllStories(updated)
-  }
-
-  function togglePublish(storyId) {
-    const updated = allStories.map(s => 
-      s.id === storyId ? { ...s, published: !s.published } : s
-    )
-    localStorage.setItem('userStories', JSON.stringify(updated))
-    setAllStories(updated)
   }
 
   if (!isAuthenticated) {
@@ -87,53 +58,9 @@ export default function AdminDashboard() {
             تسجيل خروج
           </button>
         </div>
-
-        <div className="grid gap-4">
-          {allStories.map((story) => (
-            <motion.div
-              key={story.id}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              className="bg-white dark:bg-dramatic-800 p-4 rounded-lg shadow flex items-center justify-between"
-            >
-              <div>
-                <h3 className="font-bold text-gray-800 dark:text-gray-200">
-                  {story.title}
-                </h3>
-                <p className="text-sm text-gray-500 dark:text-gray-400">
-                  {story.description?.substring(0, 50)}...
-                </p>
-                <p className="text-xs text-gray-400 mt-1">
-                  {new Date(story.created_at).toLocaleDateString('ar-EG')}
-                </p>
-              </div>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => togglePublish(story.id)}
-                  className={`px-3 py-1 rounded text-sm ${
-                    story.published
-                      ? 'bg-green-100 text-green-700'
-                      : 'bg-yellow-100 text-yellow-700'
-                  }`}
-                >
-                  {story.published ? 'منشور' : 'مسودة'}
-                </button>
-                <button
-                  onClick={() => deleteStory(story.id)}
-                  className="px-3 py-1 rounded bg-red-100 text-red-700 text-sm"
-                >
-                  حذف
-                </button>
-              </div>
-            </motion.div>
-          ))}
-          
-          {allStories.length === 0 && (
-            <p className="text-center text-gray-500 dark:text-gray-400 py-8">
-              لا توجد قصص بعد
-            </p>
-          )}
-        </div>
+        <p className="text-center text-gray-500 dark:text-gray-400 py-8">
+          جاري تحميل القصص...
+        </p>
       </div>
     </div>
   )
