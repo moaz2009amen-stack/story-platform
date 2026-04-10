@@ -1,12 +1,16 @@
-import React, { useState } from 'react'
+import { useState } from 'react'
+import { motion } from 'framer-motion'
+import { useNavigate } from 'react-router-dom'
 
 export default function CreateStory() {
+  const navigate = useNavigate()
   const [story, setStory] = useState({
     title: '',
-    description: ''
+    description: '',
+    cover: ''
   })
 
-  const handleSubmit = (e) => {
+  function handleSubmit(e) {
     e.preventDefault()
     const storyData = {
       id: Date.now().toString(),
@@ -16,49 +20,66 @@ export default function CreateStory() {
     const existingStories = JSON.parse(localStorage.getItem('userStories') || '[]')
     localStorage.setItem('userStories', JSON.stringify([...existingStories, storyData]))
     alert('تم حفظ قصتك!')
-    window.location.href = '/'  // بديل آمن لـ useNavigate
+    navigate('/')
   }
 
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: '#1a1a2e', color: 'white', padding: '40px 20px' }}>
-      <div style={{ maxWidth: '600px', margin: '0 auto', backgroundColor: '#16213e', padding: '30px', borderRadius: '20px' }}>
-        <h1 style={{ fontSize: '28px', marginBottom: '30px', textAlign: 'center' }}>
-          ✍️ اكتب قصتك التفاعلية
-        </h1>
-        
-        <form onSubmit={handleSubmit}>
-          <div style={{ marginBottom: '20px' }}>
-            <label style={{ display: 'block', marginBottom: '8px' }}>عنوان القصة</label>
-            <input
-              type="text"
-              required
-              value={story.title}
-              onChange={(e) => setStory({ ...story, title: e.target.value })}
-              style={{ width: '100%', padding: '12px', borderRadius: '10px', border: '1px solid #0f3460', backgroundColor: '#1a1a2e', color: 'white' }}
-              placeholder="أدخل عنوان قصتك"
-            />
-          </div>
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 py-8">
+      <div className="container mx-auto px-4 max-w-2xl">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-6 md:p-8"
+        >
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-6">
+            ✍️ اكتب قصتك التفاعلية
+          </h1>
           
-          <div style={{ marginBottom: '20px' }}>
-            <label style={{ display: 'block', marginBottom: '8px' }}>وصف القصة</label>
-            <textarea
-              rows="4"
-              value={story.description}
-              onChange={(e) => setStory({ ...story, description: e.target.value })}
-              style={{ width: '100%', padding: '12px', borderRadius: '10px', border: '1px solid #0f3460', backgroundColor: '#1a1a2e', color: 'white' }}
-              placeholder="اكتب وصفاً مختصراً لقصتك"
-            />
-          </div>
-          
-          <div style={{ display: 'flex', gap: '15px', marginTop: '30px' }}>
-            <button type="submit" style={{ flex: 1, padding: '15px', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', color: 'white', border: 'none', borderRadius: '10px', fontWeight: 'bold', cursor: 'pointer' }}>
-              💾 حفظ القصة
-            </button>
-            <button type="button" onClick={() => window.location.href = '/'} style={{ flex: 1, padding: '15px', background: 'transparent', color: '#667eea', border: '2px solid #667eea', borderRadius: '10px', fontWeight: 'bold', cursor: 'pointer' }}>
-              إلغاء
-            </button>
-          </div>
-        </form>
+          <form onSubmit={handleSubmit} className="space-y-6">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                عنوان القصة
+              </label>
+              <input
+                type="text"
+                required
+                value={story.title}
+                onChange={(e) => setStory({ ...story, title: e.target.value })}
+                className="w-full px-4 py-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                placeholder="أدخل عنوان قصتك"
+              />
+            </div>
+            
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                وصف القصة
+              </label>
+              <textarea
+                rows="4"
+                value={story.description}
+                onChange={(e) => setStory({ ...story, description: e.target.value })}
+                className="w-full px-4 py-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                placeholder="اكتب وصفاً مختصراً لقصتك"
+              />
+            </div>
+            
+            <div className="flex gap-4 pt-4">
+              <button 
+                type="submit" 
+                className="flex-1 bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-bold py-3 px-6 rounded-lg hover:from-purple-700 hover:to-indigo-700 transition-all shadow-lg"
+              >
+                💾 حفظ القصة
+              </button>
+              <button 
+                type="button"
+                onClick={() => navigate('/')}
+                className="flex-1 border-2 border-purple-600 text-purple-600 dark:text-purple-400 font-bold py-3 px-6 rounded-lg hover:bg-purple-600 hover:text-white transition-all"
+              >
+                إلغاء
+              </button>
+            </div>
+          </form>
+        </motion.div>
       </div>
     </div>
   )
