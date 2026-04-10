@@ -11,18 +11,87 @@ export default function StoryPlayer() {
   const [history, setHistory] = useState([])
   const [loading, setLoading] = useState(true)
   const [language, setLanguage] = useState('ar')
+  const [progress, setProgress] = useState(0)
+  const [totalScenesCount, setTotalScenesCount] = useState(0)
 
   useEffect(() => {
     loadStory()
   }, [storyId])
 
+  useEffect(() => {
+    if (story && currentScene) {
+      calculateProgress()
+      saveProgress()
+    }
+  }, [currentScene, history])
+
+  function calculateProgress() {
+    if (!story) return
+    
+    // حساب عدد المشاهد الممكنة من البداية للنهاية
+    const maxDepth = countMaxDepth(story.scenes, story.firstScene)
+    const currentDepth = history.length + 1
+    const calculatedProgress = Math.min((currentDepth / maxDepth) * 100, 100)
+    setProgress(calculatedProgress)
+    setTotalScenesCount(maxDepth)
+  }
+
+  function countMaxDepth(scenes, startId, visited = new Set()) {
+    if (visited.has(startId)) return 0
+    visited.add(startId)
+    
+    const scene = scenes[startId]
+    if (!scene || scene.isEnding || !scene.choices?.length) return 1
+    
+    const depths = scene.choices.map(c => countMaxDepth(scenes, c.nextScene, new Set(visited)))
+    return 1 + Math.max(...depths, 0)
+  }
+
+  function saveProgress() {
+    if (story && currentScene) {
+      const savedProgress = {
+        storyId: story.id,
+        sceneId: currentScene.id,
+        history: history,
+        timestamp: new Date().toISOString()
+      }
+      localStorage.setItem(`progress_${story.id}`, JSON.stringify(savedProgress))
+    }
+  }
+
+  function loadSavedProgress() {
+    const saved = localStorage.getItem(`progress_${storyId}`)
+    if (saved) {
+      try {
+        const progressData = JSON.parse(saved)
+        const savedTime = new Date(progressData.timestamp)
+        const now = new Date()
+        const hoursDiff = (now - savedTime) / (1000 * 60 * 60)
+        
+        // لو التقدم أقل من 24 ساعة، اسأل المستخدم
+        if (hoursDiff < 24) {
+          if (confirm('📖 هل تريد الاستمرار من حيث توقفت؟')) {
+            return progressData
+          }
+        }
+      } catch (e) {
+        console.error('Error loading progress:', e)
+      }
+    }
+    return null
+  }
+
   function loadStory() {
     setLoading(true)
     
-    // محاكاة تحميل القصة من localStorage أو API
-    setTimeout(() => {
+    const allStories = JSON.parse(localStorage.getItem('userStories') || '[]')
+    const foundStory = allStories.find(s => s.id === storyId)
+    
+    let activeStory = foundStory
+    
+    if (!foundStory) {
       // قصة تجريبية للعرض
-      const demoStory = {
+      activeStory = {
         id: storyId,
         title: { ar: 'الغابة المسحورة', en: 'The Enchanted Forest' },
         description: { ar: 'مغامرة في غابة مليئة بالأسرار', en: 'An adventure in a forest full of secrets' },
@@ -107,22 +176,30 @@ export default function StoryPlayer() {
             }
           }
         },
-        firstScene: 'start'
+        firstScene: 'start',
+        isPublished: true
       }
-      
-      setStory(demoStory)
-      setCurrentScene(demoStory.scenes[demoStory.firstScene])
-      setLoading(false)
-    }, 1000)
+    }
+    
+    setStory(activeStory)
+    
+    // التحقق من وجود تقدم محفوظ
+    const savedProgress = loadSavedProgress()
+    if (savedProgress) {
+      setCurrentScene(activeStory.scenes[savedProgress.sceneId])
+      setHistory(savedProgress.history)
+    } else {
+      setCurrentScene(activeStory.scenes[activeStory.firstScene])
+      setHistory([])
+    }
+    
+    setLoading(false)
   }
 
   function handleChoice(choice) {
     if (!story || !currentScene) return
     
-    // حفظ المشهد الحالي في التاريخ
     setHistory([...history, currentScene.id])
-    
-    // الانتقال للمشهد التالي
     const nextScene = story.scenes[choice.nextScene]
     setCurrentScene(nextScene)
   }
@@ -131,6 +208,7 @@ export default function StoryPlayer() {
     if (!story) return
     setCurrentScene(story.scenes[story.firstScene])
     setHistory([])
+    localStorage.removeItem(`progress_${story.id}`)
   }
 
   function handleGoBack() {
@@ -151,8 +229,29 @@ export default function StoryPlayer() {
       })
     } else {
       navigator.clipboard?.writeText(url)
-      alert('تم نسخ الرابط!')
+      alert(language === 'ar' ? '📋 تم نسخ الرابط!' : '📋 Link copied!')
     }
+  }
+
+  function shareEnding() {
+    if (!currentScene?.isEnding) return
+    
+    const url = `${window.location.origin}/story/${storyId}?ending=${currentScene.id}`
+    if (navigator.share) {
+      navigator.share({
+        title: language === 'ar' ? 'شاهد نهاية قصتي!' : 'Check out my story ending!',
+        text: currentScene.endingMessage?.[language] || '',
+        url: url
+      })
+    } else {
+      navigator.clipboard?.writeText(url)
+      alert(language === 'ar' ? '📋 تم نسخ رابط النهاية!' : '📋 Ending link copied!')
+    }
+  }
+
+  function clearProgress() {
+    localStorage.removeItem(`progress_${storyId}`)
+    alert(language === 'ar' ? '🗑️ تم حذف التقدم المحفوظ' : '🗑️ Progress cleared')
   }
 
   if (loading) {
@@ -176,7 +275,7 @@ export default function StoryPlayer() {
           <p className="text-xl text-gray-600 dark:text-gray-400 mb-4">
             {language === 'ar' ? 'لم يتم العثور على القصة' : 'Story not found'}
           </p>
-          <button onClick={() => navigate('/')} className="btn-primary">
+          <button onClick={() => navigate('/')} className="px-6 py-3 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-lg font-bold">
             {language === 'ar' ? 'العودة للرئيسية' : 'Back to Home'}
           </button>
         </div>
@@ -194,31 +293,41 @@ export default function StoryPlayer() {
         {/* Header */}
         <div className="mb-6 flex items-center justify-between flex-wrap gap-3">
           <button
-            onClick={() => navigate('/')}
+            onClick={() => navigate('/explore')}
             className="text-gray-600 dark:text-gray-400 hover:text-purple-600 dark:hover:text-purple-400 transition-colors"
           >
-            ← {language === 'ar' ? 'العودة للقصص' : 'Back to Stories'}
+            ← {language === 'ar' ? 'العودة للمكتبة' : 'Back to Library'}
           </button>
           
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
             <button
               onClick={() => setLanguage(language === 'ar' ? 'en' : 'ar')}
-              className="px-4 py-2 bg-gray-200 dark:bg-gray-700 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors text-sm"
+              className="px-3 py-2 bg-gray-200 dark:bg-gray-700 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors text-sm"
             >
               {language === 'ar' ? '🇬🇧 English' : '🇸🇦 عربي'}
             </button>
             
             <button
               onClick={shareStory}
-              className="px-4 py-2 bg-gray-200 dark:bg-gray-700 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors text-sm"
+              className="px-3 py-2 bg-gray-200 dark:bg-gray-700 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors text-sm"
             >
               📤 {language === 'ar' ? 'مشاركة' : 'Share'}
             </button>
             
+            {localStorage.getItem(`progress_${storyId}`) && (
+              <button
+                onClick={clearProgress}
+                className="px-3 py-2 bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400 rounded-lg text-sm"
+                title={language === 'ar' ? 'حذف التقدم المحفوظ' : 'Clear saved progress'}
+              >
+                🗑️
+              </button>
+            )}
+            
             {history.length > 0 && (
               <button
                 onClick={handleGoBack}
-                className="px-4 py-2 bg-gray-200 dark:bg-gray-700 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors text-sm"
+                className="px-3 py-2 bg-gray-200 dark:bg-gray-700 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors text-sm"
               >
                 ↩️ {language === 'ar' ? 'تراجع' : 'Back'}
               </button>
@@ -226,7 +335,7 @@ export default function StoryPlayer() {
             
             <button
               onClick={handleRestart}
-              className="px-4 py-2 bg-gray-200 dark:bg-gray-700 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors text-sm"
+              className="px-3 py-2 bg-gray-200 dark:bg-gray-700 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors text-sm"
             >
               🔄 {language === 'ar' ? 'من البداية' : 'Restart'}
             </button>
@@ -237,6 +346,29 @@ export default function StoryPlayer() {
         <h2 className="text-2xl md:text-3xl font-bold mb-4 text-gray-900 dark:text-white">
           {title}
         </h2>
+
+        {/* Progress Bar */}
+        {!currentScene.isEnding && (
+          <div className="mb-6">
+            <div className="flex items-center justify-between text-sm text-gray-500 dark:text-gray-400 mb-2">
+              <span>{language === 'ar' ? 'تقدم القصة' : 'Story Progress'}</span>
+              <span>{Math.round(progress)}%</span>
+            </div>
+            <div className="h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+              <motion.div
+                className="h-full bg-gradient-to-r from-purple-600 to-indigo-600"
+                initial={{ width: 0 }}
+                animate={{ width: `${progress}%` }}
+                transition={{ duration: 0.5 }}
+              />
+            </div>
+            <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+              {language === 'ar' 
+                ? `المشهد ${history.length + 1} من حوالي ${totalScenesCount}` 
+                : `Scene ${history.length + 1} of about ${totalScenesCount}`}
+            </p>
+          </div>
+        )}
 
         {/* Scene Card */}
         <AnimatePresence mode="wait">
@@ -311,10 +443,16 @@ export default function StoryPlayer() {
                       {language === 'ar' ? '🔄 ابدأ من جديد' : '🔄 Start Over'}
                     </button>
                     <button 
-                      onClick={() => navigate('/')} 
+                      onClick={() => navigate('/explore')} 
                       className="border-2 border-purple-600 text-purple-600 dark:text-purple-400 font-bold py-3 px-6 rounded-lg hover:bg-purple-600 hover:text-white transition-all"
                     >
                       {language === 'ar' ? '📚 اختر قصة أخرى' : '📚 Choose Another Story'}
+                    </button>
+                    <button 
+                      onClick={shareEnding} 
+                      className="border-2 border-green-600 text-green-600 dark:text-green-400 font-bold py-3 px-6 rounded-lg hover:bg-green-600 hover:text-white transition-all"
+                    >
+                      📤 {language === 'ar' ? 'مشاركة النهاية' : 'Share Ending'}
                     </button>
                   </div>
                 </motion.div>
@@ -322,13 +460,6 @@ export default function StoryPlayer() {
             </div>
           </motion.div>
         </AnimatePresence>
-
-        {/* Progress */}
-        {!currentScene.isEnding && (
-          <div className="mt-4 text-center text-sm text-gray-500 dark:text-gray-400">
-            {language === 'ar' ? `المشهد ${history.length + 1}` : `Scene ${history.length + 1}`}
-          </div>
-        )}
       </div>
     </div>
   )
