@@ -8,6 +8,8 @@ import Footer from './components/Footer'
 const StoryPlayer = lazy(() => import('./pages/StoryPlayer'))
 const CreateStory = lazy(() => import('./pages/CreateStory'))
 const AdminDashboard = lazy(() => import('./pages/AdminDashboard'))
+const Explore = lazy(() => import('./pages/Explore'))
+const Profile = lazy(() => import('./pages/Profile'))
 const NotFound = lazy(() => import('./pages/NotFound'))
 
 // مكون تحميل مؤقت
@@ -47,6 +49,8 @@ function App() {
           <Suspense fallback={<LoadingSpinner />}>
             <Routes>
               <Route path="/" element={<Home />} />
+              <Route path="/explore" element={<Explore />} />
+              <Route path="/profile" element={<Profile />} />
               <Route path="/story/:storyId" element={<StoryPlayer />} />
               <Route path="/create" element={<CreateStory />} />
               <Route path="/moaz-admin" element={<AdminDashboard />} />
