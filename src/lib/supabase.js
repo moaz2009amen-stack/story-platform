@@ -63,11 +63,7 @@ export const storyHelpers = {
   async getPublished({ limit = 20, offset = 0, category = null, search = null, sort = 'created_at' } = {}) {
     let query = supabase
       .from('stories')
-      .select(`
-        id, title, description, cover_image, category, tags,
-        reading_time, views, likes, created_at, first_scene,
-        author:profiles(id, username, full_name, avatar_url)
-      `)
+      .select('*')
       .eq('is_published', true)
 
     if (category) query = query.eq('category', category)
