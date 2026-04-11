@@ -1,295 +1,335 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
+import { Link } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { useNavigate } from 'react-router-dom'
+import {
+  RiSearchLine, RiGridLine, RiListCheck, RiBookOpenLine,
+  RiTimeLine, RiEyeLine, RiHeartLine, RiUser3Line,
+  RiFilterLine, RiArrowDownLine,
+} from 'react-icons/ri'
+import Navbar from '../components/Navbar'
+import Footer from '../components/Footer'
+import { storyHelpers } from '../lib/supabase'
 
-export default function Explore() {
-  const navigate = useNavigate()
-  const [stories, setStories] = useState([])
-  const [filteredStories, setFilteredStories] = useState([])
-  const [searchTerm, setSearchTerm] = useState('')
-  const [selectedCategory, setSelectedCategory] = useState('all')
-  const [sortBy, setSortBy] = useState('newest')
-  const [language, setLanguage] = useState('ar')
-  const [viewMode, setViewMode] = useState('grid') // grid or list
+const CATEGORIES = ['جميع التصنيفات', 'مغامرة', 'رعب', 'رومانسية', 'خيال علمي', 'تاريخية', 'جريمة', 'أخرى']
+const SORT_OPTIONS = [
+  { value: 'created_at', label: 'الأحدث' },
+  { value: 'oldest',     label: 'الأقدم' },
+  { value: 'views',      label: 'الأكثر مشاهدة' },
+  { value: 'likes',      label: 'الأكثر إعجابًا' },
+]
 
-  // استخراج التصنيفات من القصص
-  const categories = ['all', ...new Set(stories.map(s => s.category).filter(Boolean))]
-
-  useEffect(() => {
-    loadStories()
-  }, [])
-
-  useEffect(() => {
-    filterAndSortStories()
-  }, [stories, searchTerm, selectedCategory, sortBy])
-
-  function loadStories() {
-    const userStories = JSON.parse(localStorage.getItem('userStories') || '[]')
-    const publishedStories = userStories.filter(s => s.isPublished)
-    
-    // إضافة قصص تجريبية لو مفيش قصص
-    if (publishedStories.length === 0) {
-      const demoStories = [
-        {
-          id: 'demo-1',
-          title: { ar: 'الغابة المسحورة', en: 'The Enchanted Forest' },
-          description: { ar: 'مغامرة في غابة مليئة بالأسرار والغموض', en: 'An adventure in a mysterious forest' },
-          cover: 'https://images.pexels.com/photos/1671324/pexels-photo-1671324.jpeg',
-          category: 'مغامرة',
-          readingTime: 5,
-          rating: 4.5,
-          scenesCount: 5,
-          isPublished: true,
-          created_at: new Date().toISOString()
-        },
-        {
-          id: 'demo-2',
-          title: { ar: 'القلعة المهجورة', en: 'The Abandoned Castle' },
-          description: { ar: 'استكشف قلعة قديمة واكتشف أسرارها', en: 'Explore an old castle and discover its secrets' },
-          cover: 'https://images.pexels.com/photos/2088203/pexels-photo-2088203.jpeg',
-          category: 'غموض',
-          readingTime: 7,
-          rating: 4.8,
-          scenesCount: 6,
-          isPublished: true,
-          created_at: new Date().toISOString()
-        },
-        {
-          id: 'demo-3',
-          title: { ar: 'سر الجزيرة', en: 'Island Secret' },
-          description: { ar: 'تصل إلى جزيرة غامضة بعد غرق سفينتك', en: 'You arrive at a mysterious island after a shipwreck' },
-          cover: 'https://images.pexels.com/photos/189349/pexels-photo-189349.jpeg',
-          category: 'مغامرة',
-          readingTime: 6,
-          rating: 4.2,
-          scenesCount: 4,
-          isPublished: true,
-          created_at: new Date().toISOString()
-        }
-      ]
-      setStories(demoStories)
-    } else {
-      setStories(publishedStories)
-    }
-  }
-
-  function filterAndSortStories() {
-    let filtered = [...stories]
-    
-    // بحث
-    if (searchTerm) {
-      filtered = filtered.filter(s => 
-        s.title?.ar?.includes(searchTerm) || 
-        s.title?.en?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        s.description?.ar?.includes(searchTerm)
-      )
-    }
-    
-    // تصنيف
-    if (selectedCategory !== 'all') {
-      filtered = filtered.filter(s => s.category === selectedCategory)
-    }
-    
-    // ترتيب
-    if (sortBy === 'newest') {
-      filtered.sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
-    } else if (sortBy === 'oldest') {
-      filtered.sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
-    } else if (sortBy === 'title') {
-      filtered.sort((a, b) => (a.title?.ar || '').localeCompare(b.title?.ar || ''))
-    } else if (sortBy === 'rating') {
-      filtered.sort((a, b) => (b.rating || 0) - (a.rating || 0))
-    } else if (sortBy === 'readingTime') {
-      filtered.sort((a, b) => (a.readingTime || 0) - (b.readingTime || 0))
-    }
-    
-    setFilteredStories(filtered)
-  }
-
-  function formatDate(dateString) {
-    return new Date(dateString).toLocaleDateString('ar-EG', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric'
-    })
-  }
+/* ── Story Card Grid ────────────────────────── */
+function StoryCardGrid({ story }) {
+  const title  = story.title?.ar  || story.title  || 'بلا عنوان'
+  const desc   = story.description?.ar || story.description || ''
+  const author = story.author?.full_name || story.author?.username || 'مجهول'
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 py-8">
-      <div className="container mx-auto px-4">
-        
-        {/* Header */}
-        <div className="mb-8">
-          <div className="flex items-center justify-between mb-4">
-            <h1 className="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white">
-              {language === 'ar' ? '📚 مكتبة القصص' : '📚 Story Library'}
-            </h1>
-            
-            <div className="flex gap-2">
-              <button
-                onClick={() => setLanguage(language === 'ar' ? 'en' : 'ar')}
-                className="px-3 py-2 bg-gray-200 dark:bg-gray-700 rounded-lg text-sm"
-              >
-                {language === 'ar' ? 'English' : 'عربي'}
-              </button>
-              <button
-                onClick={() => setViewMode(viewMode === 'grid' ? 'list' : 'grid')}
-                className="px-3 py-2 bg-gray-200 dark:bg-gray-700 rounded-lg"
-              >
-                {viewMode === 'grid' ? '📋' : '🔲'}
-              </button>
-            </div>
-          </div>
-          
-          {/* Search and Filters */}
-          <div className="flex flex-wrap gap-3 items-center">
-            <input
-              type="text"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="flex-1 min-w-[200px] px-4 py-3 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
-              placeholder={language === 'ar' ? '🔍 بحث عن قصة...' : '🔍 Search stories...'}
-            />
-            
-            <select
-              value={selectedCategory}
-              onChange={(e) => setSelectedCategory(e.target.value)}
-              className="px-4 py-3 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
-            >
-              <option value="all">{language === 'ar' ? '📂 كل التصنيفات' : '📂 All Categories'}</option>
-              {categories.filter(c => c !== 'all').map(cat => (
-                <option key={cat} value={cat}>{cat}</option>
-              ))}
-            </select>
-            
-            <select
-              value={sortBy}
-              onChange={(e) => setSortBy(e.target.value)}
-              className="px-4 py-3 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
-            >
-              <option value="newest">{language === 'ar' ? '🆕 الأحدث' : '🆕 Newest'}</option>
-              <option value="oldest">{language === 'ar' ? '📅 الأقدم' : '📅 Oldest'}</option>
-              <option value="title">{language === 'ar' ? '🔤 العنوان' : '🔤 Title'}</option>
-              <option value="rating">{language === 'ar' ? '⭐ الأعلى تقييماً' : '⭐ Highest Rated'}</option>
-              <option value="readingTime">{language === 'ar' ? '⏱️ وقت القراءة' : '⏱️ Reading Time'}</option>
-            </select>
-          </div>
-          
-          {/* Results count */}
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-3">
-            {language === 'ar' 
-              ? `تم العثور على ${filteredStories.length} قصة` 
-              : `Found ${filteredStories.length} stories`}
-          </p>
-        </div>
-
-        {/* Stories Grid/List */}
-        {filteredStories.length === 0 ? (
-          <div className="text-center py-16">
-            <div className="text-6xl mb-4">📭</div>
-            <p className="text-xl text-gray-500 dark:text-gray-400 mb-4">
-              {language === 'ar' ? 'لا توجد قصص متطابقة مع البحث' : 'No stories match your search'}
-            </p>
-            <button
-              onClick={() => {
-                setSearchTerm('')
-                setSelectedCategory('all')
-              }}
-              className="text-purple-600 hover:text-purple-700"
-            >
-              {language === 'ar' ? 'مسح الفلاتر' : 'Clear filters'}
-            </button>
-          </div>
-        ) : viewMode === 'grid' ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-6">
-            <AnimatePresence>
-              {filteredStories.map((story, index) => (
-                <motion.div
-                  key={story.id}
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, scale: 0.9 }}
-                  transition={{ delay: index * 0.05 }}
-                  whileHover={{ scale: 1.02, y: -5 }}
-                  className="bg-white dark:bg-gray-800 rounded-xl shadow-lg overflow-hidden cursor-pointer group"
-                  onClick={() => navigate(`/story/${story.id}`)}
-                >
-                  <div className="relative h-44 overflow-hidden">
-                    <img 
-                      src={story.cover || 'https://images.pexels.com/photos/1671324/pexels-photo-1671324.jpeg'} 
-                      alt={story.title?.ar}
-                      className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
-                    />
-                    {story.category && (
-                      <span className="absolute top-2 right-2 px-2 py-1 bg-black/50 backdrop-blur-sm text-white text-xs rounded-full">
-                        {story.category}
-                      </span>
-                    )}
-                    {story.rating && (
-                      <span className="absolute bottom-2 left-2 px-2 py-1 bg-black/50 backdrop-blur-sm text-white text-xs rounded-full">
-                        ⭐ {story.rating}
-                      </span>
-                    )}
-                  </div>
-                  <div className="p-4">
-                    <h3 className="font-bold text-gray-900 dark:text-white mb-1 line-clamp-1">
-                      {story.title?.[language] || story.title?.ar || 'بدون عنوان'}
-                    </h3>
-                    <p className="text-sm text-gray-500 dark:text-gray-400 line-clamp-2 mb-2">
-                      {story.description?.[language] || story.description?.ar || 'بدون وصف'}
-                    </p>
-                    <div className="flex items-center justify-between text-xs text-gray-400">
-                      <span>⏱️ {story.readingTime || 5} {language === 'ar' ? 'دقائق' : 'min'}</span>
-                      <span>🎬 {story.scenesCount || 4} {language === 'ar' ? 'مشاهد' : 'scenes'}</span>
-                    </div>
-                  </div>
-                </motion.div>
-              ))}
-            </AnimatePresence>
-          </div>
+    <Link to={`/story/${story.id}`} className="card block overflow-hidden group">
+      <div className="relative h-44 overflow-hidden"
+        style={{ background: 'linear-gradient(135deg, var(--bg-subtle), var(--bg-surface))' }}>
+        {story.cover_image ? (
+          <img src={story.cover_image} alt={title}
+            className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
         ) : (
-          <div className="space-y-3">
-            <AnimatePresence>
-              {filteredStories.map((story, index) => (
-                <motion.div
-                  key={story.id}
-                  initial={{ opacity: 0, x: -20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: 20 }}
-                  transition={{ delay: index * 0.05 }}
-                  className="bg-white dark:bg-gray-800 rounded-xl shadow p-4 flex gap-4 cursor-pointer hover:shadow-lg transition-shadow"
-                  onClick={() => navigate(`/story/${story.id}`)}
-                >
-                  <img 
-                    src={story.cover || 'https://images.pexels.com/photos/1671324/pexels-photo-1671324.jpeg'} 
-                    alt=""
-                    className="w-20 h-20 rounded-lg object-cover"
-                  />
-                  <div className="flex-1">
-                    <div className="flex items-start justify-between">
-                      <h3 className="font-bold text-gray-900 dark:text-white">
-                        {story.title?.[language] || story.title?.ar}
-                      </h3>
-                      {story.rating && (
-                        <span className="text-yellow-500 text-sm">⭐ {story.rating}</span>
-                      )}
-                    </div>
-                    <p className="text-sm text-gray-500 dark:text-gray-400 line-clamp-1">
-                      {story.description?.[language] || story.description?.ar}
-                    </p>
-                    <div className="flex items-center gap-4 mt-2 text-xs text-gray-400">
-                      {story.category && <span>📂 {story.category}</span>}
-                      <span>⏱️ {story.readingTime || 5} دقائق</span>
-                      <span>🎬 {story.scenesCount || 4} مشاهد</span>
-                      <span>📅 {formatDate(story.created_at)}</span>
-                    </div>
-                  </div>
-                </motion.div>
-              ))}
-            </AnimatePresence>
+          <div className="w-full h-full flex items-center justify-center">
+            <RiBookOpenLine style={{ fontSize: '2.5rem', color: 'var(--text-muted)', opacity: 0.35 }} />
+          </div>
+        )}
+        <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent" />
+        {story.category && (
+          <span className="absolute top-3 right-3 badge badge-gold text-xs">{story.category}</span>
+        )}
+      </div>
+      <div className="p-5">
+        <h3 className="font-bold text-sm mb-1.5 line-clamp-1 group-hover:text-yellow-500 transition-colors"
+          style={{ color: 'var(--text-primary)' }}>{title}</h3>
+        <p className="text-xs line-clamp-2 mb-4" style={{ color: 'var(--text-muted)', lineHeight: 1.6 }}>{desc}</p>
+        <div className="flex items-center justify-between text-xs" style={{ color: 'var(--text-muted)' }}>
+          <span className="flex items-center gap-1"><RiUser3Line />{author}</span>
+          <div className="flex items-center gap-3">
+            <span className="flex items-center gap-0.5"><RiEyeLine />{story.views || 0}</span>
+            <span className="flex items-center gap-0.5"><RiTimeLine />{story.reading_time || 5}د</span>
+          </div>
+        </div>
+      </div>
+    </Link>
+  )
+}
+
+/* ── Story Card List ────────────────────────── */
+function StoryCardList({ story }) {
+  const title  = story.title?.ar  || story.title  || 'بلا عنوان'
+  const desc   = story.description?.ar || story.description || ''
+  const author = story.author?.full_name || story.author?.username || 'مجهول'
+
+  return (
+    <Link to={`/story/${story.id}`}
+      className="card flex gap-5 p-4 overflow-hidden group"
+      style={{ flexDirection: 'row' }}>
+      <div className="w-24 h-24 rounded-xl overflow-hidden shrink-0"
+        style={{ background: 'var(--bg-subtle)' }}>
+        {story.cover_image ? (
+          <img src={story.cover_image} alt={title}
+            className="w-full h-full object-cover transition-transform duration-400 group-hover:scale-105" />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center">
+            <RiBookOpenLine style={{ color: 'var(--text-muted)', opacity: 0.35 }} />
           </div>
         )}
       </div>
+      <div className="flex-1 min-w-0 py-1">
+        <div className="flex items-start justify-between gap-2 mb-1">
+          <h3 className="font-bold text-sm group-hover:text-yellow-500 transition-colors line-clamp-1"
+            style={{ color: 'var(--text-primary)' }}>{title}</h3>
+          {story.category && <span className="badge badge-gold text-xs shrink-0">{story.category}</span>}
+        </div>
+        <p className="text-xs line-clamp-2 mb-3" style={{ color: 'var(--text-muted)', lineHeight: 1.6 }}>{desc}</p>
+        <div className="flex items-center gap-4 text-xs" style={{ color: 'var(--text-muted)' }}>
+          <span className="flex items-center gap-1"><RiUser3Line />{author}</span>
+          <span className="flex items-center gap-1"><RiEyeLine />{story.views || 0}</span>
+          <span className="flex items-center gap-1"><RiHeartLine />{story.likes || 0}</span>
+          <span className="flex items-center gap-1"><RiTimeLine />{story.reading_time || 5} دقائق</span>
+        </div>
+      </div>
+    </Link>
+  )
+}
+
+/* ── Skeleton ───────────────────────────────── */
+function StorySkeleton({ view }) {
+  return view === 'grid' ? (
+    <div className="card-flat overflow-hidden">
+      <div className="skeleton h-44" />
+      <div className="p-5 space-y-2">
+        <div className="skeleton h-4 w-3/4" />
+        <div className="skeleton h-3 w-full" />
+        <div className="skeleton h-3 w-2/3" />
+      </div>
+    </div>
+  ) : (
+    <div className="card-flat flex gap-4 p-4">
+      <div className="skeleton w-24 h-24 rounded-xl shrink-0" />
+      <div className="flex-1 space-y-2 py-1">
+        <div className="skeleton h-4 w-1/2" />
+        <div className="skeleton h-3 w-full" />
+        <div className="skeleton h-3 w-3/4" />
+      </div>
+    </div>
+  )
+}
+
+/* ── Main Page ──────────────────────────────── */
+export default function Explore() {
+  const [stories,  setStories]  = useState([])
+  const [loading,  setLoading]  = useState(true)
+  const [search,   setSearch]   = useState('')
+  const [category, setCategory] = useState('جميع التصنيفات')
+  const [sort,     setSort]     = useState('created_at')
+  const [view,     setView]     = useState('grid')
+  const [page,     setPage]     = useState(0)
+  const [hasMore,  setHasMore]  = useState(true)
+  const [showSort, setShowSort] = useState(false)
+
+  const LIMIT = 12
+
+  const fetchStories = useCallback(async (reset = false) => {
+    setLoading(true)
+    const offset = reset ? 0 : page * LIMIT
+    const { data } = await storyHelpers.getPublished({
+      limit: LIMIT,
+      offset,
+      category: category !== 'جميع التصنيفات' ? category : null,
+      search:   search || null,
+      sort,
+    })
+    if (data) {
+      setStories(prev => reset ? data : [...prev, ...data])
+      setHasMore(data.length === LIMIT)
+      if (reset) setPage(0)
+    }
+    setLoading(false)
+  }, [category, search, sort, page])
+
+  // Reset on filter change
+  useEffect(() => {
+    const t = setTimeout(() => fetchStories(true), 300)
+    return () => clearTimeout(t)
+  }, [category, search, sort])
+
+  const loadMore = () => {
+    setPage(p => p + 1)
+  }
+  useEffect(() => {
+    if (page > 0) fetchStories(false)
+  }, [page])
+
+  const currentSort = SORT_OPTIONS.find(s => s.value === sort)
+
+  return (
+    <div style={{ background: 'var(--bg-base)', minHeight: '100vh' }}>
+      <Navbar />
+
+      {/* Header */}
+      <div className="section" style={{ paddingBottom: '2rem', background: 'var(--bg-surface)', borderBottom: '1px solid var(--border-subtle)' }}>
+        <div className="page-container">
+          <motion.h1
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="text-4xl font-black mb-2"
+            style={{ color: 'var(--text-primary)' }}
+          >
+            مكتبة القصص
+          </motion.h1>
+          <p style={{ color: 'var(--text-muted)' }}>اكتشف عالمًا من القصص التفاعلية — كل قراءة تجربة جديدة</p>
+        </div>
+      </div>
+
+      <div className="page-container py-8">
+        {/* Controls */}
+        <div className="flex flex-col sm:flex-row gap-3 mb-8">
+          {/* Search */}
+          <div className="relative flex-1">
+            <RiSearchLine className="absolute right-4 top-1/2 -translate-y-1/2 text-base"
+              style={{ color: 'var(--text-muted)' }} />
+            <input
+              type="text"
+              placeholder="ابحث عن قصة..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="input-base pr-10"
+            />
+          </div>
+
+          {/* Sort dropdown */}
+          <div className="relative">
+            <button
+              onClick={() => setShowSort(s => !s)}
+              className="btn-secondary flex items-center gap-2 whitespace-nowrap"
+            >
+              <RiFilterLine />
+              {currentSort?.label}
+              <RiArrowDownLine className={`transition-transform ${showSort ? 'rotate-180' : ''}`} />
+            </button>
+            <AnimatePresence>
+              {showSort && (
+                <motion.div
+                  initial={{ opacity: 0, y: -8, scale: 0.96 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -8, scale: 0.96 }}
+                  transition={{ duration: 0.15 }}
+                  className="absolute left-0 top-full mt-1 z-20 py-1 rounded-xl overflow-hidden shadow-xl min-w-[140px]"
+                  style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-default)' }}
+                >
+                  {SORT_OPTIONS.map(opt => (
+                    <button
+                      key={opt.value}
+                      onClick={() => { setSort(opt.value); setShowSort(false) }}
+                      className="w-full text-right px-4 py-2 text-sm transition-colors hover:text-yellow-500"
+                      style={{
+                        background: sort === opt.value ? 'rgba(245,158,11,0.08)' : 'transparent',
+                        color: sort === opt.value ? '#f59e0b' : 'var(--text-secondary)',
+                      }}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+
+          {/* View toggle */}
+          <div className="flex rounded-xl overflow-hidden" style={{ border: '1px solid var(--border-default)' }}>
+            {[
+              { v: 'grid', icon: RiGridLine },
+              { v: 'list', icon: RiListCheck },
+            ].map(({ v, icon: Icon }) => (
+              <button
+                key={v}
+                onClick={() => setView(v)}
+                className="w-10 h-10 flex items-center justify-center transition-colors"
+                style={{
+                  background: view === v ? '#f59e0b15' : 'var(--bg-elevated)',
+                  color: view === v ? '#f59e0b' : 'var(--text-muted)',
+                }}
+              >
+                <Icon />
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Categories */}
+        <div className="flex gap-2 overflow-x-auto pb-2 mb-8 scrollbar-hide">
+          {CATEGORIES.map(cat => (
+            <button
+              key={cat}
+              onClick={() => setCategory(cat)}
+              className="px-4 py-2 rounded-xl text-sm font-semibold whitespace-nowrap transition-all duration-200 shrink-0"
+              style={{
+                background: category === cat ? '#f59e0b' : 'var(--bg-elevated)',
+                color: category === cat ? '#0f0d0a' : 'var(--text-secondary)',
+                border: `1px solid ${category === cat ? 'transparent' : 'var(--border-subtle)'}`,
+                boxShadow: category === cat ? '0 4px 12px rgba(245,158,11,0.35)' : 'none',
+              }}
+            >
+              {cat}
+            </button>
+          ))}
+        </div>
+
+        {/* Stories grid/list */}
+        {loading && stories.length === 0 ? (
+          <div className={view === 'grid' ? 'grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5' : 'flex flex-col gap-4'}>
+            {[...Array(8)].map((_, i) => <StorySkeleton key={i} view={view} />)}
+          </div>
+        ) : stories.length === 0 ? (
+          <div className="text-center py-24">
+            <RiBookOpenLine style={{ fontSize: '4rem', color: 'var(--text-muted)', opacity: 0.3, margin: '0 auto 1rem' }} />
+            <p className="text-lg font-semibold mb-2" style={{ color: 'var(--text-secondary)' }}>لا توجد قصص</p>
+            <p className="text-sm" style={{ color: 'var(--text-muted)' }}>جرب بحثًا مختلفًا أو تصنيفًا آخر</p>
+          </div>
+        ) : (
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={`${view}-${category}-${search}`}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className={view === 'grid'
+                ? 'grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5'
+                : 'flex flex-col gap-4'
+              }
+            >
+              {stories.map((story, i) =>
+                view === 'grid'
+                  ? <StoryCardGrid key={story.id} story={story} />
+                  : <StoryCardList key={story.id} story={story} />
+              )}
+            </motion.div>
+          </AnimatePresence>
+        )}
+
+        {/* Load more */}
+        {hasMore && !loading && stories.length > 0 && (
+          <div className="text-center mt-10">
+            <button onClick={loadMore} className="btn-secondary px-10">
+              تحميل المزيد
+            </button>
+          </div>
+        )}
+        {loading && stories.length > 0 && (
+          <div className="text-center mt-8">
+            <div className="inline-flex items-center gap-2 text-sm" style={{ color: 'var(--text-muted)' }}>
+              <div className="w-4 h-4 rounded-full border-2 border-yellow-500 border-t-transparent animate-spin" />
+              تحميل...
+            </div>
+          </div>
+        )}
+      </div>
+
+      <Footer />
     </div>
   )
 }
