@@ -135,17 +135,14 @@ export const storyHelpers = {
     return { error }
   },
 
-  async getAll() {
-    const { data, error } = await supabase
-      .from('stories')
-      .select(`
-        id, title, description, cover_image, category, is_published,
-        views, likes, created_at, reading_time,
-        author:profiles(id, username, full_name)
-      `)
-      .order('created_at', { ascending: false })
-    return { data, error }
-  },
+  async getById(id) {
+  const { data, error } = await supabase
+    .from('stories')
+    .select('*')
+    .eq('id', id)
+    .single()
+  return { data, error }
+},
 }
 
 /* ══════════════════════════════════════════
