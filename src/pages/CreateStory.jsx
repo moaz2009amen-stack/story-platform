@@ -1,574 +1,580 @@
-import { useState } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
+import { useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { motion, AnimatePresence } from 'framer-motion'
+import {
+  RiBookOpenLine, RiPencilLine, RiImageLine, RiAddLine,
+  RiDeleteBinLine, RiArrowLeftLine, RiArrowRightLine,
+  RiEyeLine, RiFlagLine, RiPlayLine, RiCheckLine,
+  RiInformationLine, RiCloseLine, RiDragMoveLine,
+} from 'react-icons/ri'
+import Navbar from '../components/Navbar'
+import { storyHelpers, uploadImage } from '../lib/supabase'
 
-export default function CreateStory() {
-  const navigate = useNavigate()
-  const [step, setStep] = useState(1) // 1:基本信息, 2:المشاهد, 3:معاينة
-  const [language, setLanguage] = useState('ar')
-  
-  const [story, setStory] = useState({
-    title: { ar: '', en: '' },
-    description: { ar: '', en: '' },
-    cover: 'https://images.pexels.com/photos/1671324/pexels-photo-1671324.jpeg'
+const CATEGORIES = ['مغامرة', 'رعب', 'رومانسية', 'خيال علمي', 'تاريخية', 'جريمة', 'أخرى']
+const ENDING_TYPES = [
+  { value: 'good',    label: '😊 نهاية سعيدة', color: '#22c55e' },
+  { value: 'bad',     label: '😢 نهاية حزينة', color: '#ef4444' },
+  { value: 'neutral', label: '😐 نهاية محايدة', color: '#f59e0b' },
+]
+
+function genId() { return `scene_${Date.now()}_${Math.random().toString(36).slice(2, 7)}` }
+
+const DEFAULT_SCENE = () => ({
+  id: genId(),
+  title: { ar: '', en: '' },
+  content: { ar: '', en: '' },
+  image: '',
+  choices: [],
+  isEnd: false,
+  endType: 'neutral',
+  endMessage: { ar: '', en: '' },
+})
+
+const DEFAULT_CHOICE = (targetId = '') => ({
+  id: genId(),
+  text: { ar: '', en: '' },
+  targetScene: targetId,
+})
+
+/* ── Step indicator ─────────────────────────── */
+function StepBar({ current }) {
+  const steps = ['معلومات القصة', 'المشاهد والاختيارات', 'المراجعة والنشر']
+  return (
+    <div className="flex items-center gap-3 mb-10">
+      {steps.map((s, i) => (
+        <div key={i} className="flex items-center gap-2 flex-1">
+          <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold shrink-0 transition-all ${
+            i < current ? 'bg-green-500 text-white' :
+            i === current ? 'text-black' : ''
+          }`}
+            style={i === current ? { background: 'linear-gradient(135deg,#f59e0b,#d97706)' } :
+                   i < current  ? {} :
+                   { background: 'var(--bg-subtle)', color: 'var(--text-muted)' }}>
+            {i < current ? <RiCheckLine /> : i + 1}
+          </div>
+          <span className="text-xs font-semibold hidden sm:block transition-colors"
+            style={{ color: i === current ? 'var(--text-primary)' : 'var(--text-muted)' }}>
+            {s}
+          </span>
+          {i < steps.length - 1 && (
+            <div className="flex-1 h-px mx-2 hidden sm:block" style={{ background: 'var(--border-default)' }} />
+          )}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+/* ── Scene Editor ───────────────────────────── */
+function SceneEditor({ scene, allScenes, onChange, onDelete, isFirst, onSetFirst }) {
+  const updateField = (path, value) => {
+    const [a, b] = path.split('.')
+    onChange(b ? { ...scene, [a]: { ...scene[a], [b]: value } } : { ...scene, [a]: value })
+  }
+  const addChoice = () => onChange({ ...scene, choices: [...scene.choices, DEFAULT_CHOICE()] })
+  const removeChoice = (cid) => onChange({ ...scene, choices: scene.choices.filter(c => c.id !== cid) })
+  const updateChoice = (cid, patch) => onChange({
+    ...scene,
+    choices: scene.choices.map(c => c.id === cid ? { ...c, ...patch } : c),
   })
 
-  const [scenes, setScenes] = useState([
-    {
-      id: 'scene_' + Date.now(),
-      title: { ar: 'المشهد الأول', en: 'First Scene' },
-      text: { ar: '', en: '' },
-      image: '',
-      isStart: true,
-      isEnding: false,
-      endingType: 'neutral',
-      endingMessage: { ar: '', en: '' },
-      choices: []
-    }
-  ])
-
-  const [selectedSceneId, setSelectedSceneId] = useState(scenes[0].id)
-  const [showSceneModal, setShowSceneModal] = useState(false)
-  const [showChoiceModal, setShowChoiceModal] = useState(false)
-  const [editingScene, setEditingScene] = useState(null)
-  const [editingChoice, setEditingChoice] = useState(null)
-
-  // دالة إضافة مشهد جديد
-  function addScene() {
-    const newScene = {
-      id: 'scene_' + Date.now(),
-      title: { ar: `مشهد ${scenes.length + 1}`, en: `Scene ${scenes.length + 1}` },
-      text: { ar: '', en: '' },
-      image: '',
-      isStart: false,
-      isEnding: false,
-      endingType: 'neutral',
-      endingMessage: { ar: '', en: '' },
-      choices: []
-    }
-    setScenes([...scenes, newScene])
-    setSelectedSceneId(newScene.id)
-  }
-
-  // دالة حذف مشهد
-  function deleteScene(sceneId) {
-    if (scenes.length <= 1) {
-      alert(language === 'ar' ? 'يجب أن تحتوي القصة على مشهد واحد على الأقل' : 'Story must have at least one scene')
-      return
-    }
-    const updated = scenes.filter(s => s.id !== sceneId)
-    setScenes(updated)
-    if (selectedSceneId === sceneId) {
-      setSelectedSceneId(updated[0].id)
-    }
-  }
-
-  // دالة تحديث مشهد
-  function updateScene(sceneId, field, value) {
-    setScenes(scenes.map(s => 
-      s.id === sceneId ? { ...s, [field]: value } : s
-    ))
-  }
-
-  // دالة تحديث نص متعدد اللغات
-  function updateSceneText(sceneId, field, lang, value) {
-    setScenes(scenes.map(s => 
-      s.id === sceneId ? { 
-        ...s, 
-        [field]: { ...s[field], [lang]: value } 
-      } : s
-    ))
-  }
-
-  // دالة إضافة اختيار
-  function addChoice(sceneId) {
-    const newChoice = {
-      id: 'choice_' + Date.now(),
-      text: { ar: 'اختيار جديد', en: 'New Choice' },
-      nextScene: scenes.find(s => s.id !== sceneId)?.id || null
-    }
-    setScenes(scenes.map(s => 
-      s.id === sceneId ? { ...s, choices: [...s.choices, newChoice] } : s
-    ))
-  }
-
-  // دالة حذف اختيار
-  function deleteChoice(sceneId, choiceId) {
-    setScenes(scenes.map(s => 
-      s.id === sceneId ? { 
-        ...s, 
-        choices: s.choices.filter(c => c.id !== choiceId) 
-      } : s
-    ))
-  }
-
-  // دالة تحديث اختيار
-  function updateChoice(sceneId, choiceId, field, value) {
-    setScenes(scenes.map(s => 
-      s.id === sceneId ? {
-        ...s,
-        choices: s.choices.map(c => 
-          c.id === choiceId ? { ...c, [field]: value } : c
-        )
-      } : s
-    ))
-  }
-
-  // دالة حفظ القصة
-  function handleSave() {
-    // التحقق من البيانات
-    if (!story.title.ar) {
-      alert('يرجى إدخال عنوان القصة بالعربية')
-      return
-    }
-
-    const storyData = {
-      id: Date.now().toString(),
-      ...story,
-      scenes: scenes.reduce((acc, scene) => {
-        acc[scene.id] = scene
-        return acc
-      }, {}),
-      firstScene: scenes.find(s => s.isStart)?.id || scenes[0].id,
-      created_at: new Date().toISOString(),
-      author: 'مستخدم'
-    }
-
-    // حفظ في localStorage
-    const existingStories = JSON.parse(localStorage.getItem('userStories') || '[]')
-    localStorage.setItem('userStories', JSON.stringify([...existingStories, storyData]))
-    
-    alert(language === 'ar' ? '🎉 تم حفظ القصة بنجاح!' : '🎉 Story saved successfully!')
-    navigate('/')
-  }
-
-  // الحصول على المشهد المحدد
-  const selectedScene = scenes.find(s => s.id === selectedSceneId)
-
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
-      {/* Header */}
-      <div className="bg-white dark:bg-gray-800 shadow-sm border-b border-gray-200 dark:border-gray-700 sticky top-0 z-40">
-        <div className="container mx-auto px-4 py-4">
-          <div className="flex items-center justify-between flex-wrap gap-3">
-            <div className="flex items-center gap-4">
-              <button
-                onClick={() => navigate('/')}
-                className="text-gray-600 dark:text-gray-400 hover:text-purple-600 dark:hover:text-purple-400"
-              >
-                ← {language === 'ar' ? 'رجوع' : 'Back'}
-              </button>
-              <h1 className="text-xl md:text-2xl font-bold text-gray-900 dark:text-white">
-                ✍️ {language === 'ar' ? 'إنشاء قصة جديدة' : 'Create New Story'}
-              </h1>
-            </div>
-            
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setLanguage(language === 'ar' ? 'en' : 'ar')}
-                className="px-3 py-1.5 text-sm bg-gray-100 dark:bg-gray-700 rounded-lg"
-              >
-                {language === 'ar' ? 'English' : 'عربي'}
-              </button>
-              <button
-                onClick={() => setStep(1)}
-                className={`px-4 py-2 text-sm rounded-lg transition-colors ${
-                  step === 1 
-                    ? 'bg-purple-600 text-white' 
-                    : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
-                }`}
-              >
-                1️⃣ {language === 'ar' ? 'أساسي' : 'Basic'}
-              </button>
-              <button
-                onClick={() => setStep(2)}
-                className={`px-4 py-2 text-sm rounded-lg transition-colors ${
-                  step === 2 
-                    ? 'bg-purple-600 text-white' 
-                    : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
-                }`}
-              >
-                2️⃣ {language === 'ar' ? 'مشاهد' : 'Scenes'}
-              </button>
-              <button
-                onClick={() => setStep(3)}
-                className={`px-4 py-2 text-sm rounded-lg transition-colors ${
-                  step === 3 
-                    ? 'bg-purple-600 text-white' 
-                    : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
-                }`}
-              >
-                3️⃣ {language === 'ar' ? 'معاينة' : 'Preview'}
-              </button>
-              <button
-                onClick={handleSave}
-                className="px-6 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-lg font-bold hover:shadow-lg transition-all"
-              >
-                💾 {language === 'ar' ? 'حفظ' : 'Save'}
-              </button>
-            </div>
+    <div className="card-flat p-6 space-y-5">
+      {/* Scene header */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold"
+            style={{ background: 'rgba(245,158,11,0.15)', color: '#f59e0b' }}>
+            {allScenes.findIndex(s => s.id === scene.id) + 1}
           </div>
+          <span className="font-bold text-sm" style={{ color: 'var(--text-primary)' }}>
+            {scene.title?.ar || `مشهد ${allScenes.findIndex(s => s.id === scene.id) + 1}`}
+          </span>
+          {isFirst && <span className="badge badge-gold text-xs"><RiPlayLine /> بداية</span>}
+          {scene.isEnd && <span className="badge badge-crimson text-xs"><RiFlagLine /> نهاية</span>}
+        </div>
+        <div className="flex items-center gap-2">
+          {!isFirst && (
+            <button onClick={() => onSetFirst(scene.id)}
+              className="btn-ghost text-xs px-2 py-1 rounded-lg" title="تعيين كمشهد بداية">
+              <RiPlayLine />
+            </button>
+          )}
+          <button onClick={onDelete} className="btn-danger text-xs px-2 py-1 rounded-lg">
+            <RiDeleteBinLine />
+          </button>
+        </div>
+      </div>
+
+      {/* Title */}
+      <div className="grid sm:grid-cols-2 gap-3">
+        <div>
+          <label className="label-sm">عنوان المشهد (عربي)</label>
+          <input type="text" className="input-base text-sm mt-1"
+            placeholder="عنوان المشهد بالعربية"
+            value={scene.title?.ar || ''} onChange={e => updateField('title.ar', e.target.value)} />
+        </div>
+        <div>
+          <label className="label-sm" dir="ltr">Scene Title (English)</label>
+          <input type="text" className="input-base text-sm mt-1" dir="ltr"
+            placeholder="Scene title in English"
+            value={scene.title?.en || ''} onChange={e => updateField('title.en', e.target.value)} />
         </div>
       </div>
 
       {/* Content */}
-      <div className="container mx-auto px-4 py-8">
-        <div className="max-w-4xl mx-auto">
-          
-          {/* Step 1: Basic Info */}
-          {step === 1 && (
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-6 md:p-8"
-            >
-              <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">
-                📖 {language === 'ar' ? 'معلومات القصة' : 'Story Information'}
-              </h2>
-              
-              <div className="space-y-6">
-                <div className="grid md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                      العنوان (عربي) *
-                    </label>
-                    <input
-                      type="text"
-                      value={story.title.ar}
-                      onChange={(e) => setStory({ ...story, title: { ...story.title, ar: e.target.value } })}
-                      className="w-full px-4 py-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-purple-500"
-                      placeholder="أدخل عنوان القصة"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                      Title (English)
-                    </label>
-                    <input
-                      type="text"
-                      value={story.title.en}
-                      onChange={(e) => setStory({ ...story, title: { ...story.title, en: e.target.value } })}
-                      className="w-full px-4 py-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-purple-500"
-                      placeholder="Enter story title"
-                    />
-                  </div>
-                </div>
+      <div className="grid sm:grid-cols-2 gap-3">
+        <div>
+          <label className="label-sm">محتوى المشهد (عربي) *</label>
+          <textarea rows={4} className="input-base text-sm mt-1 resize-none"
+            placeholder="اكتب نص المشهد بالعربية..."
+            value={scene.content?.ar || ''} onChange={e => updateField('content.ar', e.target.value)} />
+        </div>
+        <div>
+          <label className="label-sm" dir="ltr">Scene Content (English)</label>
+          <textarea rows={4} className="input-base text-sm mt-1 resize-none" dir="ltr"
+            placeholder="Write scene content in English..."
+            value={scene.content?.en || ''} onChange={e => updateField('content.en', e.target.value)} />
+        </div>
+      </div>
 
-                <div className="grid md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                      الوصف (عربي)
-                    </label>
-                    <textarea
-                      rows="3"
-                      value={story.description.ar}
-                      onChange={(e) => setStory({ ...story, description: { ...story.description, ar: e.target.value } })}
-                      className="w-full px-4 py-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-purple-500"
-                      placeholder="اكتب وصفاً للقصة"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                      Description (English)
-                    </label>
-                    <textarea
-                      rows="3"
-                      value={story.description.en}
-                      onChange={(e) => setStory({ ...story, description: { ...story.description, en: e.target.value } })}
-                      className="w-full px-4 py-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-purple-500"
-                      placeholder="Enter story description"
-                    />
-                  </div>
-                </div>
+      {/* Is ending */}
+      <div className="flex items-center gap-3 p-3 rounded-xl" style={{ background: 'var(--bg-subtle)' }}>
+        <input type="checkbox" id={`end-${scene.id}`} checked={scene.isEnd}
+          onChange={e => onChange({ ...scene, isEnd: e.target.checked })}
+          className="w-4 h-4 accent-yellow-500" />
+        <label htmlFor={`end-${scene.id}`} className="text-sm font-semibold cursor-pointer"
+          style={{ color: 'var(--text-secondary)' }}>هذا مشهد نهاية 🏁</label>
+      </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    🖼️ {language === 'ar' ? 'صورة الغلاف' : 'Cover Image'}
-                  </label>
-                  <input
-                    type="text"
-                    value={story.cover}
-                    onChange={(e) => setStory({ ...story, cover: e.target.value })}
-                    className="w-full px-4 py-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-purple-500"
-                    placeholder="رابط الصورة"
-                  />
-                  {story.cover && (
-                    <img src={story.cover} alt="Cover" className="mt-3 h-32 object-cover rounded-lg" />
-                  )}
-                </div>
-              </div>
-
-              <div className="flex justify-end mt-8">
+      {scene.isEnd && (
+        <div className="grid sm:grid-cols-3 gap-3 p-4 rounded-xl" style={{ border: '1px dashed var(--border-default)' }}>
+          <div className="sm:col-span-3">
+            <label className="label-sm">نوع النهاية</label>
+            <div className="flex gap-2 mt-1 flex-wrap">
+              {ENDING_TYPES.map(et => (
                 <button
-                  onClick={() => setStep(2)}
-                  className="px-6 py-3 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-lg font-bold hover:shadow-lg transition-all"
+                  key={et.value}
+                  type="button"
+                  onClick={() => onChange({ ...scene, endType: et.value })}
+                  className="px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all"
+                  style={{
+                    background: scene.endType === et.value ? `${et.color}15` : 'transparent',
+                    borderColor: scene.endType === et.value ? et.color : 'var(--border-default)',
+                    color: scene.endType === et.value ? et.color : 'var(--text-muted)',
+                  }}
                 >
-                  {language === 'ar' ? 'التالي: المشاهد' : 'Next: Scenes'} →
+                  {et.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <label className="label-sm">رسالة النهاية (عربي)</label>
+            <input type="text" className="input-base text-sm mt-1"
+              placeholder="رسالة تظهر عند النهاية..."
+              value={scene.endMessage?.ar || ''}
+              onChange={e => updateField('endMessage.ar', e.target.value)} />
+          </div>
+          <div className="sm:col-span-2">
+            <label className="label-sm" dir="ltr">End Message (English)</label>
+            <input type="text" className="input-base text-sm mt-1" dir="ltr"
+              placeholder="Message shown at the end..."
+              value={scene.endMessage?.en || ''}
+              onChange={e => updateField('endMessage.en', e.target.value)} />
+          </div>
+        </div>
+      )}
+
+      {/* Choices */}
+      {!scene.isEnd && (
+        <div>
+          <div className="flex items-center justify-between mb-3">
+            <label className="label-sm">الاختيارات ({scene.choices.length}/4)</label>
+            {scene.choices.length < 4 && (
+              <button type="button" onClick={addChoice}
+                className="btn-ghost text-xs px-2 py-1 rounded-lg flex items-center gap-1"
+                style={{ color: '#f59e0b' }}>
+                <RiAddLine /> إضافة اختيار
+              </button>
+            )}
+          </div>
+          <div className="space-y-3">
+            {scene.choices.map((choice, ci) => (
+              <div key={choice.id} className="flex gap-2 items-start p-3 rounded-xl"
+                style={{ background: 'var(--bg-subtle)', border: '1px solid var(--border-subtle)' }}>
+                <span className="w-6 h-6 rounded-lg flex items-center justify-center text-xs font-bold shrink-0 mt-2"
+                  style={{ background: 'rgba(245,158,11,0.15)', color: '#f59e0b' }}>{ci + 1}</span>
+                <div className="flex-1 grid sm:grid-cols-2 gap-2">
+                  <input type="text" className="input-base text-xs py-2"
+                    placeholder="نص الاختيار بالعربية"
+                    value={choice.text?.ar || ''}
+                    onChange={e => updateChoice(choice.id, { text: { ...choice.text, ar: e.target.value } })} />
+                  <input type="text" className="input-base text-xs py-2" dir="ltr"
+                    placeholder="Choice text in English"
+                    value={choice.text?.en || ''}
+                    onChange={e => updateChoice(choice.id, { text: { ...choice.text, en: e.target.value } })} />
+                  <select className="input-base text-xs py-2 sm:col-span-2"
+                    value={choice.targetScene}
+                    onChange={e => updateChoice(choice.id, { targetScene: e.target.value })}>
+                    <option value="">-- اختر المشهد التالي --</option>
+                    {allScenes.filter(s => s.id !== scene.id).map(s => (
+                      <option key={s.id} value={s.id}>
+                        {s.title?.ar || `مشهد ${allScenes.findIndex(x => x.id === s.id) + 1}`}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <button onClick={() => removeChoice(choice.id)} className="btn-danger p-1.5 rounded-lg mt-1 shrink-0">
+                  <RiCloseLine />
                 </button>
               </div>
-            </motion.div>
-          )}
+            ))}
+            {scene.choices.length === 0 && (
+              <p className="text-xs text-center py-3" style={{ color: 'var(--text-muted)' }}>
+                أضف اختياراً واحداً على الأقل لغير مشاهد النهاية
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
 
-          {/* Step 2: Scenes */}
-          {step === 2 && (
-            <div className="flex gap-6">
-              {/* Sidebar - قائمة المشاهد */}
-              <div className="w-64 shrink-0">
-                <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-4 sticky top-24">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="font-bold text-gray-900 dark:text-white">
-                      📋 {language === 'ar' ? 'المشاهد' : 'Scenes'}
-                    </h3>
-                    <button
-                      onClick={addScene}
-                      className="w-8 h-8 bg-purple-600 text-white rounded-lg flex items-center justify-center hover:bg-purple-700"
-                    >
-                      +
-                    </button>
-                  </div>
-                  
-                  <div className="space-y-2 max-h-96 overflow-y-auto">
-                    {scenes.map((scene, index) => (
-                      <button
-                        key={scene.id}
-                        onClick={() => setSelectedSceneId(scene.id)}
-                        className={`w-full text-right p-3 rounded-lg transition-all ${
-                          selectedSceneId === scene.id
-                            ? 'bg-purple-100 dark:bg-purple-900/50 border-2 border-purple-500'
-                            : 'bg-gray-50 dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between">
-                          <span className="font-medium text-gray-900 dark:text-white">
-                            {index + 1}. {scene.title?.[language] || scene.title?.ar || `مشهد ${index + 1}`}
-                          </span>
-                          {scene.isStart && <span className="text-green-500 text-xs">🚀</span>}
-                          {scene.isEnding && <span className="text-red-500 text-xs">🏁</span>}
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
+/* ── Main Page ──────────────────────────────── */
+export default function CreateStory() {
+  const navigate  = useNavigate()
+  const [step,    setStep]    = useState(0)
+  const [saving,  setSaving]  = useState(false)
+  const [error,   setError]   = useState('')
+  const [uploading, setUploading] = useState(false)
 
-              {/* Main - تحرير المشهد */}
-              <div className="flex-1">
-                {selectedScene && (
-                  <motion.div
-                    key={selectedScene.id}
-                    initial={{ opacity: 0, x: 20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-6"
-                  >
-                    {/* عنوان المشهد */}
-                    <div className="flex items-center justify-between mb-6">
-                      <div className="flex-1">
-                        <input
-                          type="text"
-                          value={selectedScene.title?.[language] || ''}
-                          onChange={(e) => updateSceneText(selectedScene.id, 'title', language, e.target.value)}
-                          className="text-xl font-bold bg-transparent border-b-2 border-gray-300 dark:border-gray-600 focus:border-purple-500 outline-none px-2 py-1 w-full"
-                          placeholder={language === 'ar' ? 'عنوان المشهد' : 'Scene title'}
-                        />
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => updateScene(selectedScene.id, 'isStart', !selectedScene.isStart)}
-                          className={`px-3 py-1 rounded-lg text-sm ${
-                            selectedScene.isStart
-                              ? 'bg-green-500 text-white'
-                              : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
-                          }`}
-                        >
-                          🚀 {language === 'ar' ? 'بداية' : 'Start'}
-                        </button>
-                        <button
-                          onClick={() => updateScene(selectedScene.id, 'isEnding', !selectedScene.isEnding)}
-                          className={`px-3 py-1 rounded-lg text-sm ${
-                            selectedScene.isEnding
-                              ? 'bg-red-500 text-white'
-                              : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
-                          }`}
-                        >
-                          🏁 {language === 'ar' ? 'نهاية' : 'Ending'}
-                        </button>
-                        {scenes.length > 1 && (
-                          <button
-                            onClick={() => deleteScene(selectedScene.id)}
-                            className="px-3 py-1 bg-red-100 dark:bg-red-900/30 text-red-600 rounded-lg text-sm"
-                          >
-                            🗑️
-                          </button>
-                        )}
-                      </div>
-                    </div>
+  // Step 1: Basic info
+  const [info, setInfo] = useState({
+    title_ar: '', title_en: '',
+    desc_ar: '', desc_en: '',
+    cover: '',
+    category: 'مغامرة',
+    readingTime: 5,
+  })
 
-                    {/* نص المشهد */}
-                    <div className="mb-6">
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                        {language === 'ar' ? 'نص المشهد' : 'Scene Text'}
-                      </label>
-                      <textarea
-                        rows="4"
-                        value={selectedScene.text?.[language] || ''}
-                        onChange={(e) => updateSceneText(selectedScene.id, 'text', language, e.target.value)}
-                        className="w-full px-4 py-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-purple-500"
-                        placeholder={language === 'ar' ? 'اكتب نص المشهد هنا...' : 'Write scene text here...'}
-                      />
-                    </div>
+  // Step 2: Scenes
+  const firstScene = DEFAULT_SCENE()
+  const [scenes,     setScenes]     = useState([firstScene])
+  const [firstSceneId, setFirstSceneId] = useState(firstScene.id)
+  const [activeSid,  setActiveSid]  = useState(firstScene.id)
 
-                    {/* صورة المشهد */}
-                    <div className="mb-6">
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                        🖼️ {language === 'ar' ? 'صورة المشهد (اختياري)' : 'Scene Image (Optional)'}
-                      </label>
-                      <input
-                        type="text"
-                        value={selectedScene.image || ''}
-                        onChange={(e) => updateScene(selectedScene.id, 'image', e.target.value)}
-                        className="w-full px-4 py-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                        placeholder="رابط الصورة"
-                      />
-                    </div>
+  function addScene() {
+    const s = DEFAULT_SCENE()
+    setScenes(prev => [...prev, s])
+    setActiveSid(s.id)
+  }
 
-                    {/* نهاية - إعدادات خاصة */}
-                    {selectedScene.isEnding && (
-                      <div className="mb-6 p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                          {language === 'ar' ? 'نوع النهاية' : 'Ending Type'}
-                        </label>
-                        <select
-                          value={selectedScene.endingType || 'neutral'}
-                          onChange={(e) => updateScene(selectedScene.id, 'endingType', e.target.value)}
-                          className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white mb-3"
-                        >
-                          <option value="good">😊 {language === 'ar' ? 'جيدة' : 'Good'}</option>
-                          <option value="bad">😢 {language === 'ar' ? 'سيئة' : 'Bad'}</option>
-                          <option value="neutral">😐 {language === 'ar' ? 'محايدة' : 'Neutral'}</option>
-                        </select>
-                        
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                          {language === 'ar' ? 'رسالة النهاية' : 'Ending Message'}
-                        </label>
-                        <textarea
-                          rows="2"
-                          value={selectedScene.endingMessage?.[language] || ''}
-                          onChange={(e) => updateSceneText(selectedScene.id, 'endingMessage', language, e.target.value)}
-                          className="w-full px-4 py-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                          placeholder={language === 'ar' ? 'رسالة تظهر عند النهاية...' : 'Message shown at the end...'}
-                        />
-                      </div>
-                    )}
+  function updateScene(id, updated) {
+    setScenes(prev => prev.map(s => s.id === id ? updated : s))
+  }
 
-                    {/* الاختيارات */}
-                    {!selectedScene.isEnding && (
-                      <div>
-                        <div className="flex items-center justify-between mb-3">
-                          <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                            🔀 {language === 'ar' ? 'الاختيارات' : 'Choices'}
-                          </label>
-                          <button
-                            onClick={() => addChoice(selectedScene.id)}
-                            className="px-3 py-1 bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 rounded-lg text-sm"
-                          >
-                            + {language === 'ar' ? 'إضافة اختيار' : 'Add Choice'}
-                          </button>
-                        </div>
+  function deleteScene(id) {
+    if (scenes.length === 1) return
+    const idx = scenes.findIndex(s => s.id === id)
+    setScenes(prev => prev.filter(s => s.id !== id))
+    if (firstSceneId === id) setFirstSceneId(scenes.find(s => s.id !== id)?.id || '')
+    setActiveSid(scenes[idx > 0 ? idx - 1 : 1]?.id || scenes[0]?.id)
+  }
 
-                        <div className="space-y-3">
-                          {selectedScene.choices?.map((choice) => (
-                            <div key={choice.id} className="p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
-                              <div className="flex gap-2 mb-2">
-                                <input
-                                  type="text"
-                                  value={choice.text?.[language] || ''}
-                                  onChange={(e) => {
-                                    const updated = { ...choice.text, [language]: e.target.value }
-                                    updateChoice(selectedScene.id, choice.id, 'text', updated)
-                                  }}
-                                  className="flex-1 px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                                  placeholder={language === 'ar' ? 'نص الاختيار' : 'Choice text'}
-                                />
-                                <button
-                                  onClick={() => deleteChoice(selectedScene.id, choice.id)}
-                                  className="px-3 py-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg"
-                                >
-                                  🗑️
-                                </button>
-                              </div>
-                              <select
-                                value={choice.nextScene || ''}
-                                onChange={(e) => updateChoice(selectedScene.id, choice.id, 'nextScene', e.target.value)}
-                                className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm"
-                              >
-                                <option value="">{language === 'ar' ? '-- اختر المشهد التالي --' : '-- Select next scene --'}</option>
-                                {scenes.map((s) => (
-                                  <option key={s.id} value={s.id}>
-                                    {s.title?.[language] || s.title?.ar || s.id}
-                                  </option>
-                                ))}
-                              </select>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </motion.div>
-                )}
-              </div>
+  async function handleCoverUpload(e) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setUploading(true)
+    try {
+      const url = await uploadImage(file)
+      setInfo(i => ({ ...i, cover: url }))
+    } catch { setError('فشل رفع الصورة. حاول مرة أخرى.') }
+    setUploading(false)
+  }
+
+  async function publish(isPublished) {
+    setError('')
+    setSaving(true)
+
+    const scenesMap = {}
+    scenes.forEach(s => { scenesMap[s.id] = s })
+
+    const storyData = {
+      title:        { ar: info.title_ar, en: info.title_en },
+      description:  { ar: info.desc_ar,  en: info.desc_en },
+      cover_image:  info.cover,
+      category:     info.category,
+      reading_time: info.readingTime,
+      scenes:       scenesMap,
+      first_scene:  firstSceneId,
+      is_published: isPublished,
+    }
+
+    const { data, error } = await storyHelpers.create(storyData)
+    if (error) { setError(error.message || 'حدث خطأ أثناء الحفظ'); setSaving(false); return }
+    navigate(`/story/${data.id}`)
+  }
+
+  // Validation
+  const step1Valid = info.title_ar.trim().length > 2
+  const step2Valid = scenes.length > 0 && scenes.every(s =>
+    s.content?.ar?.trim() || s.isEnd
+  )
+
+  const activeScene = scenes.find(s => s.id === activeSid)
+
+  return (
+    <div style={{ background: 'var(--bg-base)', minHeight: '100vh' }}>
+      <Navbar />
+
+      <div className="page-container py-10">
+        <div className="max-w-4xl mx-auto">
+
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
+            <div className="flex items-center gap-3 mb-2">
+              <h1 className="text-3xl font-black" style={{ color: 'var(--text-primary)' }}>
+                إنشاء قصة جديدة
+              </h1>
+            </div>
+            <p className="mb-8" style={{ color: 'var(--text-muted)' }}>ابنِ عالمك، أضف مشاهدك، وانشر قصتك للعالم</p>
+          </motion.div>
+
+          <StepBar current={step} />
+
+          {error && (
+            <div className="p-4 rounded-xl mb-6 text-sm flex items-center gap-2"
+              style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', color: '#ef4444' }}>
+              <RiInformationLine /> {error}
             </div>
           )}
 
-          {/* Step 3: Preview */}
-          {step === 3 && (
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-6 md:p-8"
-            >
-              <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">
-                👁️ {language === 'ar' ? 'معاينة القصة' : 'Story Preview'}
-              </h2>
-              
-              <div className="border border-gray-200 dark:border-gray-700 rounded-xl p-6">
-                <img src={story.cover} alt="Cover" className="w-full h-48 object-cover rounded-lg mb-4" />
-                <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">
-                  {story.title[language] || story.title.ar || (language === 'ar' ? 'بدون عنوان' : 'Untitled')}
-                </h3>
-                <p className="text-gray-600 dark:text-gray-400 mb-4">
-                  {story.description[language] || story.description.ar || ''}
-                </p>
-                
-                <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
-                  <p className="text-sm text-gray-500 mb-2">
-                    {language === 'ar' ? `عدد المشاهد: ${scenes.length}` : `Scenes: ${scenes.length}`}
-                  </p>
-                  <p className="text-sm text-gray-500 mb-2">
-                    {language === 'ar' ? `مشهد البداية: ${scenes.find(s => s.isStart)?.title?.[language] || 'غير محدد'}` : `Start scene: ${scenes.find(s => s.isStart)?.title?.[language] || 'Not set'}`}
-                  </p>
-                  <p className="text-sm text-gray-500">
-                    {language === 'ar' ? `النهايات: ${scenes.filter(s => s.isEnding).length}` : `Endings: ${scenes.filter(s => s.isEnding).length}`}
-                  </p>
-                </div>
-              </div>
+          <AnimatePresence mode="wait">
 
-              <div className="flex justify-between mt-8">
-                <button
-                  onClick={() => setStep(2)}
-                  className="px-6 py-3 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg font-bold hover:bg-gray-300 dark:hover:bg-gray-600 transition-all"
-                >
-                  ← {language === 'ar' ? 'السابق' : 'Back'}
-                </button>
-                <button
-                  onClick={handleSave}
-                  className="px-8 py-3 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-lg font-bold hover:shadow-lg transition-all"
-                >
-                  💾 {language === 'ar' ? 'حفظ ونشر' : 'Save & Publish'}
-                </button>
-              </div>
-            </motion.div>
-          )}
+            {/* ── Step 0: Basic Info ─────────────── */}
+            {step === 0 && (
+              <motion.div key="step0" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}
+                className="space-y-6">
+
+                <div className="card-flat p-6">
+                  <h2 className="font-bold text-lg mb-5" style={{ color: 'var(--text-primary)' }}>معلومات القصة الأساسية</h2>
+                  <div className="grid sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="label-sm">عنوان القصة (عربي) *</label>
+                      <input type="text" className="input-base mt-1"
+                        placeholder="عنوان رائع بالعربية..."
+                        value={info.title_ar} onChange={e => setInfo(i => ({ ...i, title_ar: e.target.value }))} />
+                    </div>
+                    <div>
+                      <label className="label-sm" dir="ltr">Story Title (English)</label>
+                      <input type="text" className="input-base mt-1" dir="ltr"
+                        placeholder="An amazing English title..."
+                        value={info.title_en} onChange={e => setInfo(i => ({ ...i, title_en: e.target.value }))} />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <label className="label-sm">وصف القصة (عربي)</label>
+                      <textarea rows={3} className="input-base mt-1 resize-none"
+                        placeholder="وصف مثير يشجع على القراءة..."
+                        value={info.desc_ar} onChange={e => setInfo(i => ({ ...i, desc_ar: e.target.value }))} />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <label className="label-sm" dir="ltr">Story Description (English)</label>
+                      <textarea rows={3} className="input-base mt-1 resize-none" dir="ltr"
+                        placeholder="An exciting description..."
+                        value={info.desc_en} onChange={e => setInfo(i => ({ ...i, desc_en: e.target.value }))} />
+                    </div>
+                    <div>
+                      <label className="label-sm">التصنيف</label>
+                      <select className="input-base mt-1"
+                        value={info.category} onChange={e => setInfo(i => ({ ...i, category: e.target.value }))}>
+                        {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="label-sm">وقت القراءة (دقائق)</label>
+                      <input type="number" min={1} max={120} className="input-base mt-1"
+                        value={info.readingTime} onChange={e => setInfo(i => ({ ...i, readingTime: +e.target.value }))} />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Cover Upload */}
+                <div className="card-flat p-6">
+                  <h2 className="font-bold text-lg mb-5" style={{ color: 'var(--text-primary)' }}>صورة الغلاف</h2>
+                  <div className="flex gap-5 items-start flex-wrap">
+                    <div className="w-40 h-40 rounded-2xl overflow-hidden shrink-0 flex items-center justify-center"
+                      style={{ background: 'var(--bg-subtle)', border: '2px dashed var(--border-default)' }}>
+                      {info.cover
+                        ? <img src={info.cover} alt="cover" className="w-full h-full object-cover" />
+                        : <RiImageLine style={{ fontSize: '2.5rem', color: 'var(--text-muted)', opacity: 0.4 }} />
+                      }
+                    </div>
+                    <div className="flex-1 min-w-[200px]">
+                      <p className="text-sm mb-3" style={{ color: 'var(--text-muted)' }}>
+                        ارفع صورة جذابة لقصتك (JPG, PNG, WebP)
+                      </p>
+                      <label className="btn-secondary cursor-pointer inline-flex">
+                        {uploading ? (
+                          <><span className="w-4 h-4 border-2 border-t-yellow-500 rounded-full animate-spin" /> جاري الرفع...</>
+                        ) : (
+                          <><RiImageLine /> اختر صورة</>
+                        )}
+                        <input type="file" accept="image/*" className="hidden" onChange={handleCoverUpload} />
+                      </label>
+                      {info.cover && (
+                        <button onClick={() => setInfo(i => ({ ...i, cover: '' }))}
+                          className="btn-ghost text-sm mr-2" style={{ color: '#ef4444' }}>
+                          إزالة
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+
+            {/* ── Step 1: Scenes ─────────────────── */}
+            {step === 1 && (
+              <motion.div key="step1" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}>
+                <div className="grid lg:grid-cols-[220px,1fr] gap-6">
+
+                  {/* Scene list */}
+                  <div>
+                    <div className="card-flat p-3 space-y-1 sticky top-20">
+                      <p className="text-xs font-bold px-2 py-1 mb-2" style={{ color: 'var(--text-muted)' }}>
+                        المشاهد ({scenes.length})
+                      </p>
+                      {scenes.map((s, i) => (
+                        <button
+                          key={s.id}
+                          onClick={() => setActiveSid(s.id)}
+                          className="w-full text-right px-3 py-2.5 rounded-xl text-xs font-semibold transition-all flex items-center gap-2"
+                          style={{
+                            background: activeSid === s.id ? 'rgba(245,158,11,0.1)' : 'transparent',
+                            color: activeSid === s.id ? '#f59e0b' : 'var(--text-secondary)',
+                          }}
+                        >
+                          <span className="w-5 h-5 rounded-md flex items-center justify-center text-[10px] shrink-0"
+                            style={{ background: 'rgba(245,158,11,0.15)', color: '#f59e0b' }}>{i + 1}</span>
+                          <span className="truncate flex-1">{s.title?.ar || `مشهد ${i + 1}`}</span>
+                          <div className="flex gap-0.5 shrink-0">
+                            {s.id === firstSceneId && <RiPlayLine className="text-green-500 text-[10px]" />}
+                            {s.isEnd && <RiFlagLine className="text-red-400 text-[10px]" />}
+                          </div>
+                        </button>
+                      ))}
+                      <button onClick={addScene}
+                        className="w-full text-center py-2.5 rounded-xl text-xs font-semibold border border-dashed transition-colors mt-2"
+                        style={{ borderColor: 'var(--border-default)', color: 'var(--text-muted)' }}>
+                        <RiAddLine className="inline ml-1" /> مشهد جديد
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Active scene editor */}
+                  <div>
+                    {activeScene ? (
+                      <SceneEditor
+                        scene={activeScene}
+                        allScenes={scenes}
+                        onChange={updated => updateScene(activeScene.id, updated)}
+                        onDelete={() => deleteScene(activeScene.id)}
+                        isFirst={activeScene.id === firstSceneId}
+                        onSetFirst={id => setFirstSceneId(id)}
+                      />
+                    ) : (
+                      <div className="card-flat p-12 text-center">
+                        <p style={{ color: 'var(--text-muted)' }}>اختر مشهداً من القائمة لتعديله</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </motion.div>
+            )}
+
+            {/* ── Step 2: Preview ────────────────── */}
+            {step === 2 && (
+              <motion.div key="step2" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}
+                className="space-y-6">
+                <div className="card-flat p-6">
+                  <h2 className="font-bold text-xl mb-5" style={{ color: 'var(--text-primary)' }}>مراجعة القصة</h2>
+                  <div className="flex gap-5 items-start flex-wrap">
+                    {info.cover && (
+                      <img src={info.cover} alt="cover" className="w-32 h-32 rounded-2xl object-cover shrink-0" />
+                    )}
+                    <div>
+                      <h3 className="text-2xl font-black mb-1" style={{ color: 'var(--text-primary)' }}>{info.title_ar}</h3>
+                      <p className="text-sm mb-3" style={{ color: 'var(--text-muted)' }}>{info.desc_ar}</p>
+                      <div className="flex flex-wrap gap-2">
+                        <span className="badge badge-gold">{info.category}</span>
+                        <span className="badge">{scenes.length} مشهد</span>
+                        <span className="badge">{info.readingTime} دقائق</span>
+                        <span className="badge badge-crimson">{scenes.filter(s => s.isEnd).length} نهاية</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="card-flat p-6">
+                  <h3 className="font-bold mb-4" style={{ color: 'var(--text-primary)' }}>ملخص المشاهد</h3>
+                  <div className="space-y-2">
+                    {scenes.map((s, i) => (
+                      <div key={s.id} className="flex items-center gap-3 py-2 border-b last:border-0"
+                        style={{ borderColor: 'var(--border-subtle)' }}>
+                        <span className="w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold"
+                          style={{ background: 'rgba(245,158,11,0.12)', color: '#f59e0b' }}>{i + 1}</span>
+                        <span className="flex-1 text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>
+                          {s.title?.ar || `مشهد ${i + 1}`}
+                        </span>
+                        <div className="flex gap-1">
+                          {s.id === firstSceneId && <span className="badge badge-green text-xs"><RiPlayLine /> بداية</span>}
+                          {s.isEnd && <span className="badge badge-crimson text-xs"><RiFlagLine /> نهاية</span>}
+                          {!s.isEnd && <span className="badge text-xs">{s.choices.length} اختيار</span>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex gap-4 flex-wrap">
+                  <button onClick={() => publish(false)} disabled={saving}
+                    className="btn-secondary flex-1 justify-center py-3.5">
+                    <RiEyeLine /> حفظ كمسودة
+                  </button>
+                  <button onClick={() => publish(true)} disabled={saving}
+                    className="btn-primary flex-1 justify-center py-3.5">
+                    {saving ? (
+                      <><span className="w-4 h-4 border-2 border-black/30 border-t-black rounded-full animate-spin" /> جاري النشر...</>
+                    ) : (
+                      <><RiCheckLine /> نشر القصة 🚀</>
+                    )}
+                  </button>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* Navigation */}
+          <div className="flex items-center justify-between mt-8 pt-6" style={{ borderTop: '1px solid var(--border-subtle)' }}>
+            <button
+              onClick={() => setStep(s => s - 1)}
+              disabled={step === 0}
+              className="btn-secondary flex items-center gap-2"
+              style={{ opacity: step === 0 ? 0.3 : 1 }}
+            >
+              <RiArrowRightLine /> السابق
+            </button>
+            {step < 2 && (
+              <button
+                onClick={() => setStep(s => s + 1)}
+                disabled={(step === 0 && !step1Valid) || (step === 1 && !step2Valid)}
+                className="btn-primary flex items-center gap-2"
+              >
+                التالي <RiArrowLeftLine />
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </div>
