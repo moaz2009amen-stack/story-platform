@@ -4,7 +4,7 @@ import { motion } from 'framer-motion'
 import {
   RiBookOpenLine, RiPencilLine, RiShareLine,
   RiArrowLeftLine, RiStarLine, RiTimeLine,
-  RiUser3Line, RiPlayCircleLine, RiBranchesLine,
+  RiUser3Line, RiPlayCircleLine, RiGitBranchLine,
 } from 'react-icons/ri'
 import Navbar from '../components/Navbar'
 import Footer from '../components/Footer'
@@ -40,7 +40,7 @@ const FEATURES = [
 
 const HOW_IT_WORKS = [
   { step: '١', title: 'اختر قصة',    desc: 'تصفح مكتبتنا المتنوعة وابدأ قصتك المفضلة', icon: RiBookOpenLine },
-  { step: '٢', title: 'اتخذ قرارك', desc: 'في كل مشهد يوجد اختيارات تُشكّل مسار حكايتك', icon: RiBranchesLine },
+  { step: '٢', title: 'اتخذ قرارك', desc: 'في كل مشهد يوجد اختيارات تُشكّل مسار حكايتك', icon: RiGitBranchLine },
   { step: '٣', title: 'اعش النهاية', desc: 'كل قرار يقودك لنهاية مختلفة — هل ستكتشفها كلها؟', icon: RiPlayCircleLine },
 ]
 
