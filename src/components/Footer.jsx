@@ -1,13 +1,40 @@
+import { Link } from 'react-router-dom'
+import { RiBookOpenLine, RiGithubLine, RiHeartFill } from 'react-icons/ri'
+
 export default function Footer() {
+  const year = new Date().getFullYear()
+
   return (
-    <footer className="bg-white dark:bg-dramatic-950 border-t border-gray-200 dark:border-dramatic-800 py-8 mt-12">
-      <div className="container mx-auto px-4 text-center">
-        <p className="text-gray-600 dark:text-gray-400">
-          © 2025 قصة واختار - منصة القصص التفاعلية
-        </p>
-        <p className="text-sm text-gray-500 dark:text-gray-500 mt-2">
-          اقرأ • اكتب • شارك قصصك التفاعلية
-        </p>
+    <footer style={{ background: 'var(--bg-surface)', borderTop: '1px solid var(--border-subtle)' }}>
+      <div className="page-container py-10">
+        <div className="flex flex-col md:flex-row items-center justify-between gap-6">
+
+          {/* Brand */}
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg flex items-center justify-center"
+              style={{ background: 'linear-gradient(135deg, #f59e0b, #d97706)' }}>
+              <RiBookOpenLine className="text-black text-sm" />
+            </div>
+            <div>
+              <p className="font-bold text-sm" style={{ color: 'var(--text-primary)' }}>قصة واختار</p>
+              <p className="text-xs" style={{ color: 'var(--text-muted)' }}>منصة القصص التفاعلية</p>
+            </div>
+          </div>
+
+          {/* Links */}
+          <nav className="flex items-center gap-6 text-sm" style={{ color: 'var(--text-muted)' }}>
+            <Link to="/explore" className="hover:text-yellow-500 transition-colors duration-200">المكتبة</Link>
+            <Link to="/create"  className="hover:text-yellow-500 transition-colors duration-200">اكتب قصة</Link>
+            <Link to="/auth"    className="hover:text-yellow-500 transition-colors duration-200">تسجيل الدخول</Link>
+          </nav>
+
+          {/* Copyright */}
+          <p className="text-xs flex items-center gap-1" style={{ color: 'var(--text-muted)' }}>
+            صُنع بـ
+            <RiHeartFill className="text-red-500 text-xs" />
+            بواسطة معاذ · {year}
+          </p>
+        </div>
       </div>
     </footer>
   )
