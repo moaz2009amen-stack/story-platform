@@ -328,6 +328,8 @@ export default function Explore() {
           </div>
         )}
       </div>
+  
+     <div style={{ flex: 1 }} />
 
       <Footer />
     </div>
