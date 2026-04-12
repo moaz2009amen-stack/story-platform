@@ -30,10 +30,20 @@ export default function Footer() {
 
           {/* Copyright */}
           <p className="text-xs flex items-center gap-1" style={{ color: 'var(--text-muted)' }}>
-            صُنع بـ
-            <RiHeartFill className="text-red-500 text-xs" />
-            بواسطة معاذ · {year}
-          </p>
+  صُنع بـ
+  <RiHeartFill className="text-red-500 text-xs" />
+  بواسطة{' '}
+  
+    href="https://www.facebook.com/profile.php?id=61552026802548&locale=ar_AR"
+    target="_blank"
+    rel="noopener noreferrer"
+    className="font-bold hover:text-yellow-500 transition-colors"
+    style={{ color: 'var(--text-secondary)' }}
+  >
+    معاذ
+  </a>
+  · {year}
+</p>
         </div>
       </div>
     </footer>
