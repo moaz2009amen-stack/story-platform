@@ -59,8 +59,8 @@ export default function Profile() {
   ]
 
   return (
-    <div style={{ background: 'var(--bg-base)', minHeight: '100vh' }}>
-      <Navbar />
+<div style={{ background: 'var(--bg-base)', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+  <Navbar />
 
       <div className="page-container py-10">
         <div className="grid lg:grid-cols-[320px,1fr] gap-8">
