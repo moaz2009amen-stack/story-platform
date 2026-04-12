@@ -4,11 +4,11 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   RiSearchLine, RiGridLine, RiListCheck, RiBookOpenLine,
   RiTimeLine, RiEyeLine, RiHeartLine, RiUser3Line,
-  RiFilterLine, RiArrowDownLine,
+  RiFilterLine, RiArrowDownLine, RiStarFill,
 } from 'react-icons/ri'
 import Navbar from '../components/Navbar'
 import Footer from '../components/Footer'
-import { storyHelpers } from '../lib/supabase'
+import { storyHelpers, supabase } from '../lib/supabase'
 
 const CATEGORIES = ['جميع التصنيفات', 'مغامرة', 'رعب', 'رومانسية', 'خيال علمي', 'تاريخية', 'جريمة', 'أخرى']
 const SORT_OPTIONS = [
@@ -19,7 +19,7 @@ const SORT_OPTIONS = [
 ]
 
 /* ── Story Card Grid ────────────────────────── */
-function StoryCardGrid({ story }) {
+function StoryCardGrid({ story, avgRating }) {
   const title  = story.title?.ar  || story.title  || 'بلا عنوان'
   const desc   = story.description?.ar || story.description || ''
   const author = story.author?.full_name || story.author?.username || 'مجهول'
@@ -52,13 +52,22 @@ function StoryCardGrid({ story }) {
             <span className="flex items-center gap-0.5"><RiTimeLine />{story.reading_time || 5}د</span>
           </div>
         </div>
+        {/* عرض متوسط التقييم بالنجوم */}
+        {avgRating && (
+          <div className="flex items-center gap-1 mt-3 pt-2 border-t" style={{ borderColor: 'var(--border-subtle)' }}>
+            <RiStarFill className="text-yellow-500 text-xs" />
+            <span className="text-xs font-semibold" style={{ color: 'var(--text-primary)' }}>
+              {avgRating.toFixed(1)}
+            </span>
+          </div>
+        )}
       </div>
     </Link>
   )
 }
 
 /* ── Story Card List ────────────────────────── */
-function StoryCardList({ story }) {
+function StoryCardList({ story, avgRating }) {
   const title  = story.title?.ar  || story.title  || 'بلا عنوان'
   const desc   = story.description?.ar || story.description || ''
   const author = story.author?.full_name || story.author?.username || 'مجهول'
@@ -85,11 +94,20 @@ function StoryCardList({ story }) {
           {story.category && <span className="badge badge-gold text-xs shrink-0">{story.category}</span>}
         </div>
         <p className="text-xs line-clamp-2 mb-3" style={{ color: 'var(--text-muted)', lineHeight: 1.6 }}>{desc}</p>
-        <div className="flex items-center gap-4 text-xs" style={{ color: 'var(--text-muted)' }}>
+        <div className="flex items-center gap-4 text-xs flex-wrap" style={{ color: 'var(--text-muted)' }}>
           <span className="flex items-center gap-1"><RiUser3Line />{author}</span>
           <span className="flex items-center gap-1"><RiEyeLine />{story.views || 0}</span>
           <span className="flex items-center gap-1"><RiHeartLine />{story.likes || 0}</span>
           <span className="flex items-center gap-1"><RiTimeLine />{story.reading_time || 5} دقائق</span>
+          {/* عرض متوسط التقييم بالنجوم */}
+          {avgRating && (
+            <span className="flex items-center gap-1">
+              <RiStarFill className="text-yellow-500 text-xs" />
+              <span className="text-xs font-semibold" style={{ color: 'var(--text-primary)' }}>
+                {avgRating.toFixed(1)}
+              </span>
+            </span>
+          )}
         </div>
       </div>
     </Link>
@@ -130,6 +148,7 @@ export default function Explore() {
   const [page,     setPage]     = useState(0)
   const [hasMore,  setHasMore]  = useState(true)
   const [showSort, setShowSort] = useState(false)
+  const [ratingsMap, setRatingsMap] = useState({})
 
   const LIMIT = 12
 
@@ -147,6 +166,32 @@ export default function Explore() {
       setStories(prev => reset ? data : [...prev, ...data])
       setHasMore(data.length === LIMIT)
       if (reset) setPage(0)
+      
+      // جلب التقييمات لكل القصص مرة واحدة
+      const ids = data.map(s => s.id)
+      const { data: ratings } = await supabase
+        .from('ratings')
+        .select('story_id, rating')
+        .in('story_id', ids)
+      
+      // حساب متوسط التقييم لكل قصة
+      const map = {}
+      if (ratings) {
+        ratings.forEach(r => {
+          if (!map[r.story_id]) {
+            map[r.story_id] = { sum: 0, count: 0 }
+          }
+          map[r.story_id].sum += r.rating
+          map[r.story_id].count += 1
+        })
+      }
+      
+      const avgMap = {}
+      Object.keys(map).forEach(id => {
+        avgMap[id] = map[id].sum / map[id].count
+      })
+      
+      setRatingsMap(prev => reset ? avgMap : { ...prev, ...avgMap })
     }
     setLoading(false)
   }, [category, search, sort, page])
@@ -167,8 +212,8 @@ export default function Explore() {
   const currentSort = SORT_OPTIONS.find(s => s.value === sort)
 
   return (
-<div style={{ background: 'var(--bg-base)', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
-  <Navbar />
+    <div style={{ background: 'var(--bg-base)', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+      <Navbar />
 
       {/* Header */}
       <div className="section" style={{ paddingBottom: '2rem', background: 'var(--bg-surface)', borderBottom: '1px solid var(--border-subtle)' }}>
@@ -302,10 +347,10 @@ export default function Explore() {
                 : 'flex flex-col gap-4'
               }
             >
-              {stories.map((story, i) =>
+              {stories.map((story) =>
                 view === 'grid'
-                  ? <StoryCardGrid key={story.id} story={story} />
-                  : <StoryCardList key={story.id} story={story} />
+                  ? <StoryCardGrid key={story.id} story={story} avgRating={ratingsMap[story.id]} />
+                  : <StoryCardList key={story.id} story={story} avgRating={ratingsMap[story.id]} />
               )}
             </motion.div>
           </AnimatePresence>
@@ -329,7 +374,7 @@ export default function Explore() {
         )}
       </div>
   
-     <div style={{ flex: 1 }} />
+      <div style={{ flex: 1 }} />
 
       <Footer />
     </div>
