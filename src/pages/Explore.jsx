@@ -167,8 +167,8 @@ export default function Explore() {
   const currentSort = SORT_OPTIONS.find(s => s.value === sort)
 
   return (
-    <div style={{ background: 'var(--bg-base)', minHeight: '100vh' }}>
-      <Navbar />
+<div style={{ background: 'var(--bg-base)', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+  <Navbar />
 
       {/* Header */}
       <div className="section" style={{ paddingBottom: '2rem', background: 'var(--bg-surface)', borderBottom: '1px solid var(--border-subtle)' }}>
