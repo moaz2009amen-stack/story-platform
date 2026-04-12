@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
@@ -18,33 +18,7 @@ const ENDING_TYPES = [
   { value: 'neutral', label: '😐 نهاية محايدة', color: '#f59e0b' },
 ]
 
-// مكتبة صور جاهزة من Unsplash
-const STOCK_IMAGES = [
-  { url: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=400', label: 'غابة' },
-  { url: 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=400', label: 'جبال' },
-  { url: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400', label: 'شخص' },
-  { url: 'https://images.unsplash.com/photo-1519681393784-d120267933ba?w=400', label: 'ثلوج' },
-  { url: 'https://images.unsplash.com/photo-1500534314209-a25ddb2bd429?w=400', label: 'طريق' },
-  { url: 'https://images.unsplash.com/photo-1524522173746-f628baad3644?w=400', label: 'مدينة' },
-  { url: 'https://images.unsplash.com/photo-1502481851512-e9e2529bfbf9?w=400', label: 'بحر' },
-  { url: 'https://images.unsplash.com/photo-1475924156734-496f6cac6ec1?w=400', label: 'صحراء' },
-  { url: 'https://images.unsplash.com/photo-1534796636912-3b95b3ab5986?w=400', label: 'قصر' },
-  { url: 'https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?w=400', label: 'جبل ثلجي' },
-  { url: 'https://images.unsplash.com/photo-1476514525535-07fb3b4ae5f1?w=400', label: 'بحيرة' },
-  { url: 'https://images.unsplash.com/photo-1493246507139-91e8fad9978e?w=400', label: 'شروق' },
-  { url: 'https://images.unsplash.com/photo-1518173946687-a4c8892bbd9f?w=400', label: 'غروب' },
-  { url: 'https://images.unsplash.com/photo-1520250497591-112f2f40a3f4?w=400', label: 'فندق' },
-  { url: 'https://images.unsplash.com/photo-1509316785289-025f5b846b35?w=400', label: 'كهف' },
-  { url: 'https://images.unsplash.com/photo-1448375240586-882707db888b?w=400', label: 'حديقة' },
-  { url: 'https://images.unsplash.com/photo-1551632811-561732d1e306?w=400', label: 'تسلق' },
-  { url: 'https://images.unsplash.com/photo-1555400038-63f5ba517a47?w=400', label: 'رعب' },
-  { url: 'https://images.unsplash.com/photo-1419242902214-272b3f66ee7a?w=400', label: 'نجوم' },
-  { url: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=400', label: 'شاطئ' },
-  { url: 'https://images.unsplash.com/photo-1490750967868-88df5691cc1a?w=400', label: 'ورود' },
-  { url: 'https://images.unsplash.com/photo-1521170665346-3f21e2291d8b?w=400', label: 'مطر' },
-  { url: 'https://images.unsplash.com/photo-1494548162494-384bba4ab999?w=400', label: 'ضباب' },
-  { url: 'https://images.unsplash.com/photo-1531366936337-7c912a4589a7?w=400', label: 'قطبي' },
-]
+// تم حذف مكتبة STOCK_IMAGES الثابتة لأنها لم تعد مستخدمة
 
 function genId() { return `scene_${Date.now()}_${Math.random().toString(36).slice(2, 7)}` }
 
@@ -59,13 +33,42 @@ const DEFAULT_SCENE = () => ({
   endMessage: { ar: '', en: '' },
 })
 
-/* ── Image Picker Modal ─────────────────────── */
+/* ── Image Picker Modal (تم التعديل ليستخدم Unsplash API) ─────────────────────── */
 function ImagePicker({ current, onSelect, onClose }) {
   const [tab, setTab] = useState('library')
   const [uploading, setUploading] = useState(false)
-  const [search, setSearch] = useState('')
+  const [searchQuery, setSearchQuery] = useState('')
+  const [images, setImages] = useState([])
+  const [searching, setSearching] = useState(false)
+  const [loaded, setLoaded] = useState(false)
 
-  const filtered = STOCK_IMAGES.filter(img => img.label.includes(search))
+  // تحميل صور أولية عند فتح النافذة
+  useEffect(() => {
+    if (!loaded) loadImages('nature landscape')
+  }, [])
+
+  async function loadImages(query) {
+    setSearching(true)
+    try {
+      const res = await fetch(
+        `https://api.unsplash.com/search/photos?query=${encodeURIComponent(query)}&per_page=30&client_id=${import.meta.env.VITE_UNSPLASH_ACCESS_KEY}`
+      )
+      const data = await res.json()
+      setImages(data.results.map(img => ({
+        url: img.urls.small,
+        label: img.alt_description || query,
+      })))
+      setLoaded(true)
+    } catch (error) {
+      console.error("Error loading images from Unsplash:", error)
+    }
+    setSearching(false)
+  }
+
+  function handleSearch(e) {
+    e.preventDefault()
+    if (searchQuery.trim()) loadImages(searchQuery)
+  }
 
   async function handleUpload(e) {
     const file = e.target.files?.[0]
@@ -114,30 +117,51 @@ function ImagePicker({ current, onSelect, onClose }) {
         <div className="p-5">
           {tab === 'library' && (
             <>
-              <div className="relative mb-4">
-                <RiSearchLine className="absolute right-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-muted)' }} />
-                <input type="text" placeholder="ابحث..." value={search}
-                  onChange={e => setSearch(e.target.value)} className="input-base pr-9 text-sm" />
-              </div>
-              <div className="grid grid-cols-4 sm:grid-cols-6 gap-2 max-h-72 overflow-y-auto">
-                {filtered.map(img => (
-                  <button key={img.url} onClick={() => { onSelect(img.url); onClose() }}
-                    className="relative rounded-xl overflow-hidden aspect-square group transition-all hover:scale-105"
-                    style={{ border: current === img.url ? '2px solid #f59e0b' : '2px solid transparent' }}>
-                    <img src={img.url} alt={img.label} className="w-full h-full object-cover" />
-                    <div className="absolute inset-0 flex items-end p-1 opacity-0 group-hover:opacity-100 transition-opacity"
-                      style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.6), transparent)' }}>
-                      <span className="text-white text-[10px] font-bold">{img.label}</span>
-                    </div>
-                    {current === img.url && (
-                      <div className="absolute top-1 left-1 w-5 h-5 rounded-full flex items-center justify-center"
-                        style={{ background: '#f59e0b' }}>
-                        <RiCheckLine className="text-black text-xs" />
+              {/* حقل البحث - ملاحظة: البحث يجب أن يكون بالإنجليزية لنتائج أفضل من Unsplash */}
+              <form onSubmit={handleSearch} className="flex gap-2 mb-4">
+                <div className="relative flex-1">
+                  <RiSearchLine className="absolute right-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-muted)' }} />
+                  <input
+                    type="text"
+                    placeholder="ابحث بالإنجليزي — forest, castle, ocean..."
+                    value={searchQuery}
+                    onChange={e => setSearchQuery(e.target.value)}
+                    className="input-base pr-9 text-sm"
+                    dir="ltr"
+                  />
+                </div>
+                <button type="submit" className="btn-primary px-4 text-sm shrink-0">بحث</button>
+              </form>
+
+              {/* شبكة عرض الصور */}
+              {searching ? (
+                <div className="flex items-center justify-center py-16">
+                  <div className="w-8 h-8 border-2 border-yellow-500 border-t-transparent rounded-full animate-spin" />
+                </div>
+              ) : (
+                <div className="grid grid-cols-4 sm:grid-cols-6 gap-2 max-h-72 overflow-y-auto">
+                  {images.map(img => (
+                    <button key={img.url} onClick={() => { onSelect(img.url); onClose() }}
+                      className="relative rounded-xl overflow-hidden aspect-square group transition-all hover:scale-105"
+                      style={{ border: current === img.url ? '2px solid #f59e0b' : '2px solid transparent' }}>
+                      <img src={img.url} alt={img.label} className="w-full h-full object-cover" loading="lazy" />
+                      <div className="absolute inset-0 flex items-end p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                        style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.6), transparent)' }}>
+                        <span className="text-white text-[10px] font-bold truncate">{img.label}</span>
                       </div>
-                    )}
-                  </button>
-                ))}
-              </div>
+                      {current === img.url && (
+                        <div className="absolute top-1 left-1 w-5 h-5 rounded-full flex items-center justify-center"
+                          style={{ background: '#f59e0b' }}>
+                          <RiCheckLine className="text-black text-xs" />
+                        </div>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
+              <p className="text-xs mt-3 text-center" style={{ color: 'var(--text-muted)' }}>
+                الصور من Unsplash — ابحث بالإنجليزي للحصول على نتائج أفضل
+              </p>
             </>
           )}
 
@@ -206,6 +230,7 @@ function SceneEditor({ scene, allScenes, onChange, onDelete, isFirst, onSetFirst
         <ImagePicker current={scene.image} onSelect={url => onChange({ ...scene, image: url })} onClose={() => setShowPicker(false)} />
       )}
 
+      {/* باقي محتوى SceneEditor كما هو دون تغيير... */}
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
