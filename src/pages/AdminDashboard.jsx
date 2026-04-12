@@ -182,7 +182,7 @@ function StoriesTab({ stories, onTogglePublish, onDelete }) {
   )
 }
 
-// ========== تم استبدال UsersTab بالكود الجديد ==========
+// ========== UsersTab - تم إزالة صلاحيات الأدمن ==========
 function UsersTab({ users, setUsers }) {
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(null)
@@ -191,14 +191,6 @@ function UsersTab({ users, setUsers }) {
     const q = search.toLowerCase()
     return !q || (u.full_name || '').toLowerCase().includes(q) || (u.username || '').toLowerCase().includes(q) || (u.phone || '').includes(q)
   })
-
-  async function toggleRole(user) {
-    const newRole = user.role === 'admin' ? 'user' : 'admin'
-    setLoading(`role-${user.id}`)
-    const { error } = await supabase.from('profiles').update({ role: newRole }).eq('id', user.id)
-    if (!error) setUsers(prev => prev.map(u => u.id === user.id ? { ...u, role: newRole } : u))
-    setLoading(null)
-  }
 
   async function deleteUser(userId) {
     if (!confirm('هل أنت متأكد من حذف هذا المستخدم؟')) return
@@ -241,9 +233,6 @@ function UsersTab({ users, setUsers }) {
                 <p className="font-bold text-sm truncate" style={{ color: 'var(--text-primary)' }}>
                   {user.full_name || 'بلا اسم'}
                 </p>
-                <span className={`badge text-xs ${user.role === 'admin' ? 'badge-gold' : ''}`}>
-                  {user.role === 'admin' ? '👑 مسؤول' : 'مستخدم'}
-                </span>
                 {user.banned && (
                   <span className="badge badge-crimson text-xs">🚫 موقوف</span>
                 )}
@@ -255,21 +244,8 @@ function UsersTab({ users, setUsers }) {
               </div>
             </div>
 
-            {/* Actions */}
+            {/* Actions - تم إزالة زر تغيير الصلاحية */}
             <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
-              {/* تغيير الصلاحية */}
-              <button
-                onClick={() => toggleRole(user)}
-                disabled={loading === `role-${user.id}`}
-                className="btn-secondary text-xs px-3 py-1.5 flex items-center gap-1"
-                title={user.role === 'admin' ? 'إزالة صلاحية الأدمن' : 'تعيين كأدمن'}
-              >
-                {loading === `role-${user.id}`
-                  ? <span className="w-3 h-3 border border-t-yellow-500 rounded-full animate-spin" />
-                  : user.role === 'admin' ? '👤 مستخدم' : '👑 أدمن'
-                }
-              </button>
-
               {/* إيقاف/تفعيل */}
               <button
                 onClick={() => toggleBan(user)}
@@ -305,7 +281,7 @@ function UsersTab({ users, setUsers }) {
     </div>
   )
 }
-// ========== انتهى استبدال UsersTab ==========
+// ========== انتهى UsersTab ==========
 
 function AnalyticsTab({ stories }) {
   const topViewed = [...stories].sort((a, b) => (b.views || 0) - (a.views || 0)).slice(0, 8)
