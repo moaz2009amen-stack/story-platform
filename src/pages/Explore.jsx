@@ -125,7 +125,7 @@ export default function Explore() {
   const [loading,  setLoading]  = useState(true)
   const [search,   setSearch]   = useState('')
   const [category, setCategory] = useState('جميع التصنيفات')
-  const [sort,     setSort]     = useState('created_at')
+  const [sort,     setSort]     = useState('views')
   const [view,     setView]     = useState('grid')
   const [page,     setPage]     = useState(0)
   const [hasMore,  setHasMore]  = useState(true)
