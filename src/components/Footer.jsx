@@ -26,13 +26,11 @@ export default function Footer() {
             <Link to="/auth" className="hover:text-yellow-500 transition-colors duration-200">تسجيل الدخول</Link>
           </nav>
 
-          <span className="text-xs flex items-center gap-1" style={{ color: 'var(--text-muted)' }}>
+          <p className="text-xs flex items-center gap-1" style={{ color: 'var(--text-muted)' }}>
             صُنع بـ
             <RiHeartFill className="text-red-500 text-xs" />
-            بواسطة
-            <a href="https://www.facebook.com/profile.php?id=61552026802548" target="_blank" rel="noopener noreferrer" className="font-bold hover:text-yellow-500 transition-colors" style={{ color: 'var(--text-secondary)' }}>معاذ</a>
-            · {year}
-          </span>
+            بواسطة معاذ · {year}
+          </p>
 
         </div>
       </div>
