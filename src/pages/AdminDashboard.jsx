@@ -100,10 +100,10 @@ function OverviewTab({ stories, users }) {
   return (
     <div className="space-y-8">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard icon={RiBookOpenLine} label="إجمالي القصص"   value={stories.length} sub={`${published} منشور`} color="#f59e0b" trend={12} />
-        <StatCard icon={RiUser3Line}   label="المستخدمون"       value={users.length}   sub="مسجلين"               color="#22c55e" trend={8} />
-        <StatCard icon={RiEyeLine}     label="إجمالي المشاهدات" value={totalViews.toLocaleString('ar-EG')} color="#3b82f6" trend={25} />
-        <StatCard icon={RiHeartLine}   label="الإعجابات"        value={totalLikes.toLocaleString('ar-EG')} color="#ec4899" trend={5} />
+        <StatCard icon={RiBookOpenLine} label="إجمالي القصص"   value={stories.length} sub={`${published} منشور`} color="#f59e0b" />
+        <StatCard icon={RiUser3Line}   label="المستخدمون"       value={users.length}   sub="مسجلين"               color="#22c55e" />
+        <StatCard icon={RiEyeLine}     label="إجمالي المشاهدات" value={totalViews.toLocaleString('ar-EG')} color="#3b82f6" />
+        <StatCard icon={RiHeartLine}   label="الإعجابات"        value={totalLikes.toLocaleString('ar-EG')} color="#ec4899" />
       </div>
 
       <div className="card-flat p-6">
