@@ -182,56 +182,130 @@ function StoriesTab({ stories, onTogglePublish, onDelete }) {
   )
 }
 
-function UsersTab({ users }) {
+// ========== تم استبدال UsersTab بالكود الجديد ==========
+function UsersTab({ users, setUsers }) {
   const [search, setSearch] = useState('')
+  const [loading, setLoading] = useState(null)
+
   const filtered = users.filter(u => {
     const q = search.toLowerCase()
-    return !q || (u.full_name || '').toLowerCase().includes(q) || (u.username || '').toLowerCase().includes(q)
+    return !q || (u.full_name || '').toLowerCase().includes(q) || (u.username || '').toLowerCase().includes(q) || (u.phone || '').includes(q)
   })
+
+  async function toggleRole(user) {
+    const newRole = user.role === 'admin' ? 'user' : 'admin'
+    setLoading(`role-${user.id}`)
+    const { error } = await supabase.from('profiles').update({ role: newRole }).eq('id', user.id)
+    if (!error) setUsers(prev => prev.map(u => u.id === user.id ? { ...u, role: newRole } : u))
+    setLoading(null)
+  }
+
+  async function deleteUser(userId) {
+    if (!confirm('هل أنت متأكد من حذف هذا المستخدم؟')) return
+    setLoading(`del-${userId}`)
+    await supabase.from('profiles').delete().eq('id', userId)
+    setUsers(prev => prev.filter(u => u.id !== userId))
+    setLoading(null)
+  }
+
+  async function toggleBan(user) {
+    const banned = !user.banned
+    setLoading(`ban-${user.id}`)
+    await supabase.from('profiles').update({ banned }).eq('id', user.id)
+    setUsers(prev => prev.map(u => u.id === user.id ? { ...u, banned } : u))
+    setLoading(null)
+  }
 
   return (
     <div className="space-y-5">
       <div className="relative">
         <RiSearchLine className="absolute right-3.5 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-muted)' }} />
-        <input type="text" placeholder="بحث عن مستخدم..." value={search} onChange={e => setSearch(e.target.value)} className="input-base pr-10 text-sm" />
+        <input type="text" placeholder="بحث بالاسم أو اسم المستخدم أو الهاتف..."
+          value={search} onChange={e => setSearch(e.target.value)} className="input-base pr-10 text-sm" />
       </div>
-      <div className="card-flat overflow-hidden">
-        <table className="w-full text-sm">
-          <thead>
-            <tr style={{ borderBottom: '1px solid var(--border-subtle)', background: 'var(--bg-subtle)' }}>
-              {['المستخدم', 'الصلاحية', 'تاريخ الانضمام'].map(h => (
-                <th key={h} className="text-right px-5 py-3 font-semibold text-xs" style={{ color: 'var(--text-muted)' }}>{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.length === 0 ? (
-              <tr><td colSpan={3} className="text-center py-10" style={{ color: 'var(--text-muted)' }}>لا يوجد مستخدمون</td></tr>
-            ) : filtered.map((user, i) => (
-              <tr key={user.id} style={{ borderBottom: i < filtered.length - 1 ? '1px solid var(--border-subtle)' : 'none' }}>
-                <td className="px-5 py-3">
-                  <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-xl flex items-center justify-center font-bold text-sm shrink-0" style={{ background: 'linear-gradient(135deg,#f59e0b22,#d9770622)', color: '#f59e0b' }}>
-                      {(user.full_name || user.username || '?')[0]}
-                    </div>
-                    <div>
-                      <p className="font-semibold" style={{ color: 'var(--text-primary)' }}>{user.full_name || 'بلا اسم'}</p>
-                      <p className="text-xs" style={{ color: 'var(--text-muted)' }}>@{user.username || '—'}</p>
-                    </div>
-                  </div>
-                </td>
-                <td className="px-5 py-3">
-                  <span className={`badge text-xs ${user.role === 'admin' ? 'badge-gold' : ''}`}>{user.role === 'admin' ? '👑 مسؤول' : 'مستخدم'}</span>
-                </td>
-                <td className="px-5 py-3 text-xs" style={{ color: 'var(--text-muted)' }}>{new Date(user.created_at).toLocaleDateString('ar-EG')}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+
+      <div className="space-y-3">
+        {filtered.length === 0 ? (
+          <div className="text-center py-12" style={{ color: 'var(--text-muted)' }}>لا يوجد مستخدمون</div>
+        ) : filtered.map(user => (
+          <motion.div key={user.id} layout className="card-flat p-4 flex items-center gap-4">
+            {/* Avatar */}
+            <div className="w-11 h-11 rounded-xl flex items-center justify-center font-bold text-sm shrink-0"
+              style={{ background: 'linear-gradient(135deg,#f59e0b22,#d9770622)', color: '#f59e0b' }}>
+              {(user.full_name || user.username || '?')[0]}
+            </div>
+
+            {/* Info */}
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 mb-0.5">
+                <p className="font-bold text-sm truncate" style={{ color: 'var(--text-primary)' }}>
+                  {user.full_name || 'بلا اسم'}
+                </p>
+                <span className={`badge text-xs ${user.role === 'admin' ? 'badge-gold' : ''}`}>
+                  {user.role === 'admin' ? '👑 مسؤول' : 'مستخدم'}
+                </span>
+                {user.banned && (
+                  <span className="badge badge-crimson text-xs">🚫 موقوف</span>
+                )}
+              </div>
+              <div className="flex items-center gap-3 text-xs" style={{ color: 'var(--text-muted)' }}>
+                <span>@{user.username || '—'}</span>
+                {user.phone && <span>📞 {user.phone}</span>}
+                <span>{new Date(user.created_at).toLocaleDateString('ar-EG')}</span>
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
+              {/* تغيير الصلاحية */}
+              <button
+                onClick={() => toggleRole(user)}
+                disabled={loading === `role-${user.id}`}
+                className="btn-secondary text-xs px-3 py-1.5 flex items-center gap-1"
+                title={user.role === 'admin' ? 'إزالة صلاحية الأدمن' : 'تعيين كأدمن'}
+              >
+                {loading === `role-${user.id}`
+                  ? <span className="w-3 h-3 border border-t-yellow-500 rounded-full animate-spin" />
+                  : user.role === 'admin' ? '👤 مستخدم' : '👑 أدمن'
+                }
+              </button>
+
+              {/* إيقاف/تفعيل */}
+              <button
+                onClick={() => toggleBan(user)}
+                disabled={loading === `ban-${user.id}`}
+                className="text-xs px-3 py-1.5 rounded-xl font-semibold border transition-all flex items-center gap-1"
+                style={{
+                  background: user.banned ? 'rgba(34,197,94,0.08)' : 'rgba(245,158,11,0.08)',
+                  color: user.banned ? '#22c55e' : '#f59e0b',
+                  borderColor: user.banned ? 'rgba(34,197,94,0.2)' : 'rgba(245,158,11,0.2)',
+                }}
+              >
+                {loading === `ban-${user.id}`
+                  ? <span className="w-3 h-3 border border-t-current rounded-full animate-spin" />
+                  : user.banned ? '✅ تفعيل' : '🚫 إيقاف'
+                }
+              </button>
+
+              {/* حذف */}
+              <button
+                onClick={() => deleteUser(user.id)}
+                disabled={loading === `del-${user.id}`}
+                className="btn-danger text-xs px-2.5 py-1.5 flex items-center gap-1"
+              >
+                {loading === `del-${user.id}`
+                  ? <span className="w-3 h-3 border border-red-400 border-t-transparent rounded-full animate-spin" />
+                  : <RiDeleteBinLine />
+                }
+              </button>
+            </div>
+          </motion.div>
+        ))}
       </div>
     </div>
   )
 }
+// ========== انتهى استبدال UsersTab ==========
 
 function AnalyticsTab({ stories }) {
   const topViewed = [...stories].sort((a, b) => (b.views || 0) - (a.views || 0)).slice(0, 8)
@@ -441,7 +515,7 @@ export default function AdminDashboard() {
                 <motion.div key={activeTab} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.2 }}>
                   {activeTab === 'overview' && <OverviewTab stories={stories} users={users} />}
                   {activeTab === 'stories' && <StoriesTab stories={stories} onTogglePublish={togglePublish} onDelete={deleteStory} />}
-                  {activeTab === 'users' && <UsersTab users={users} />}
+                  {activeTab === 'users' && <UsersTab users={users} setUsers={setUsers} />}
                   {activeTab === 'analytics' && <AnalyticsTab stories={stories} />}
                   {activeTab === 'settings' && <SettingsTab onLock={lock} />}
                 </motion.div>
