@@ -420,8 +420,8 @@ export default function AdminDashboard() {
 
       <div className="page-container py-8">
         <div className="grid lg:grid-cols-[200px,1fr] gap-8">
-          <nav className="space-y-1 sticky top-20">
-            {TABS.map(tab => (
+          <nav className="space-y-1">
+              {TABS.map(tab => (
               <button key={tab.id} onClick={() => setActiveTab(tab.id)}
                 className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold text-right transition-all"
                 style={{ background: activeTab === tab.id ? 'rgba(245,158,11,0.1)' : 'transparent', color: activeTab === tab.id ? '#f59e0b' : 'var(--text-secondary)' }}>
