@@ -39,7 +39,7 @@ export default function Footer() {
     rel="noopener noreferrer"
     className="font-bold hover:text-yellow-500 transition-colors"
     style={{ color: 'var(--text-secondary)' }}
-  >
+  <a>
     معاذ
   </a>
   · {year}
