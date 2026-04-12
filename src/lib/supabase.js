@@ -14,50 +14,35 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   },
 })
 
-/* ══════════════════════════════════════════
-   Auth Helpers
-   ══════════════════════════════════════════ */
-
 export const authHelpers = {
   async signUp({ email, password, fullName, username }) {
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
-      options: {
-        data: { full_name: fullName, username },
-      },
+      options: { data: { full_name: fullName, username } },
     })
     return { data, error }
   },
-
   async signIn({ email, password }) {
     const { data, error } = await supabase.auth.signInWithPassword({ email, password })
     return { data, error }
   },
-
   async signOut() {
     const { error } = await supabase.auth.signOut()
     return { error }
   },
-
   async getCurrentUser() {
     const { data: { user }, error } = await supabase.auth.getUser()
     return { user, error }
   },
-
   async getSession() {
     const { data: { session }, error } = await supabase.auth.getSession()
     return { session, error }
   },
-
   onAuthStateChange(callback) {
     return supabase.auth.onAuthStateChange(callback)
   },
 }
-
-/* ══════════════════════════════════════════
-   Story Helpers
-   ══════════════════════════════════════════ */
 
 export const storyHelpers = {
   async getPublished({ limit = 20, offset = 0, category = null, search = null, sort = 'created_at' } = {}) {
@@ -67,7 +52,7 @@ export const storyHelpers = {
       .eq('is_published', true)
 
     if (category) query = query.eq('category', category)
-    if (search)   query = query.or(`title->>ar.ilike.%${search}%,title->>en.ilike.%${search}%`)
+    if (search) query = query.or(`title->>ar.ilike.%${search}%,title->>en.ilike.%${search}%`)
 
     const sortMap = {
       created_at: { col: 'created_at', asc: false },
@@ -85,10 +70,7 @@ export const storyHelpers = {
   async getById(id) {
     const { data, error } = await supabase
       .from('stories')
-      .select(`
-        *,
-        author:profiles(id, username, full_name, avatar_url, bio)
-      `)
+      .select('*')
       .eq('id', id)
       .single()
     return { data, error }
@@ -97,7 +79,7 @@ export const storyHelpers = {
   async getByAuthor(authorId) {
     const { data, error } = await supabase
       .from('stories')
-      .select('id, title, description, cover_image, category, is_published, views, likes, created_at, reading_time')
+      .select('*')
       .eq('author_id', authorId)
       .order('created_at', { ascending: false })
     return { data, error }
@@ -106,7 +88,6 @@ export const storyHelpers = {
   async create(story) {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return { error: { message: 'غير مسجل دخول' } }
-
     const { data, error } = await supabase
       .from('stories')
       .insert({ ...story, author_id: user.id })
@@ -135,19 +116,14 @@ export const storyHelpers = {
     return { error }
   },
 
-  async getById(id) {
-  const { data, error } = await supabase
-    .from('stories')
-    .select('*')
-    .eq('id', id)
-    .single()
-  return { data, error }
-},
+  async getAll() {
+    const { data, error } = await supabase
+      .from('stories')
+      .select('*')
+      .order('created_at', { ascending: false })
+    return { data, error }
+  },
 }
-
-/* ══════════════════════════════════════════
-   Profile Helpers
-   ══════════════════════════════════════════ */
 
 export const profileHelpers = {
   async getUserProfile(userId) {
@@ -172,15 +148,11 @@ export const profileHelpers = {
   async getAll() {
     const { data, error } = await supabase
       .from('profiles')
-      .select('id, username, full_name, avatar_url, role, created_at')
+      .select('*')
       .order('created_at', { ascending: false })
     return { data, error }
   },
 }
-
-/* ══════════════════════════════════════════
-   Reading History Helpers
-   ══════════════════════════════════════════ */
 
 export const readingHelpers = {
   async saveProgress(userId, storyId, currentScene, progress) {
@@ -196,19 +168,12 @@ export const readingHelpers = {
   async getHistory(userId) {
     const { data, error } = await supabase
       .from('reading_history')
-      .select(`
-        *,
-        story:stories(id, title, cover_image, category, reading_time)
-      `)
+      .select('*, story:stories(id, title, cover_image, category, reading_time)')
       .eq('user_id', userId)
       .order('last_read', { ascending: false })
     return { data, error }
   },
 }
-
-/* ══════════════════════════════════════════
-   Cloudinary Upload Helper
-   ══════════════════════════════════════════ */
 
 export const uploadImage = async (file) => {
   const cloudName = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME
