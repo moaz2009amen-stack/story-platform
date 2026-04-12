@@ -309,6 +309,7 @@ export default function Home() {
           </motion.div>
         </div>
       </section>
+        <div style={{ flex: 1 }} />
 
       <Footer />
     </div>
