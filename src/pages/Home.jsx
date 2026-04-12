@@ -105,8 +105,8 @@ export default function Home() {
   }, [])
 
   return (
-    <div style={{ background: 'var(--bg-base)', minHeight: '100vh' }}>
-      <Navbar />
+<div style={{ background: 'var(--bg-base)', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+  <Navbar />
 
       {/* ── Hero ──────────────────────────────── */}
       <section className="relative overflow-hidden" style={{ minHeight: 'calc(100vh - 64px)' }}>
