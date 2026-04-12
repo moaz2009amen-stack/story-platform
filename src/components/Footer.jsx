@@ -29,7 +29,7 @@ export default function Footer() {
           </nav>
 
           {/* Copyright */}
-          <p className="text-xs flex items-center gap-1" style={{ color: 'var(--text-muted)' }}>
+          <span className="text-xs flex items-center gap-1" style={{ color: 'var(--text-muted)' }}>
   صُنع بـ
   <RiHeartFill className="text-red-500 text-xs" />
   بواسطة{' '}
@@ -43,7 +43,7 @@ export default function Footer() {
     معاذ
   </a>
   · {year}
-</p>
+</span>
         </div>
       </div>
     </footer>
