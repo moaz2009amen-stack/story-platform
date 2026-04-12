@@ -328,6 +328,7 @@ export default function Profile() {
           </div>
         </div>
       </div>
+      <div style={{ flex: 1 }} />    
 
       <Footer />
     </div>
