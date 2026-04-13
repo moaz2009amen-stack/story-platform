@@ -35,12 +35,10 @@
     @apply bg-[var(--bg-base)] text-[var(--text-primary)];
   }
 
-  /* RTL Support */
   [dir="rtl"] {
     text-align: right;
   }
 
-  /* Custom Scrollbar */
   ::-webkit-scrollbar {
     width: 8px;
     height: 8px;
@@ -140,5 +138,19 @@
 
   .ltr {
     direction: ltr;
+  }
+
+  .line-clamp-1 {
+    display: -webkit-box;
+    -webkit-line-clamp: 1;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  .line-clamp-2 {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
   }
 }
