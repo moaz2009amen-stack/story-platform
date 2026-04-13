@@ -56,7 +56,7 @@ export const useVerificationRequest = () => {
     mutationFn: ({ userId, storiesCount }) => 
       verificationHelpers.createRequest(userId, storiesCount),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['verification', 'myRequest'] })
+      queryClient.invalidateQueries({ queryKey: queryKeys.verification.myRequest })
       toast.success('تم إرسال طلب التوثيق بنجاح. سيتم مراجعته قريباً')
     },
     onError: (error) => {
@@ -71,5 +71,30 @@ export const useMyVerificationRequest = (userId) => {
     queryKey: queryKeys.verification.myRequest,
     queryFn: () => verificationHelpers.getMyRequest(userId),
     enabled: !!userId,
+  })
+}
+
+// جلب كل المستخدمين (للأدمن)
+export const useAllUsers = () => {
+  return useQuery({
+    queryKey: queryKeys.profile.admin,
+    queryFn: () => profileHelpers.getAll(),
+    enabled: false,
+  })
+}
+
+// حظر مستخدم (للأدمن)
+export const useBanUser = () => {
+  const queryClient = useQueryClient()
+  
+  return useMutation({
+    mutationFn: ({ userId, banned }) => profileHelpers.banUser(userId, banned),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.profile.admin })
+      toast.success('تم تحديث حالة المستخدم')
+    },
+    onError: (error) => {
+      toast.error(error.message || 'حدث خطأ')
+    },
   })
 }
