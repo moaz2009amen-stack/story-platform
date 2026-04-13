@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { useUpdateProfile, useMyVerificationRequest } from '../hooks/useProfile'
 import { useAuthorStories } from '../hooks/useStories'
-import { readingHelpers, favoritesHelpers, storyHelpers } from '../lib/supabase'
+import { readingHelpers, favoritesHelpers, storyHelpers, verificationHelpers } from '../lib/supabase'
 import { uploadAvatar } from '../lib/uploadImage'
 import { motion } from 'framer-motion'
 import toast from 'react-hot-toast'
@@ -10,9 +11,11 @@ import { FiUser, FiMail, FiEdit2, FiBookOpen, FiClock, FiHeart, FiAward, FiCheck
 import UserPoints from '../components/Gamification/UserPoints'
 import Badges from '../components/Gamification/Badges'
 import LevelProgress from '../components/Gamification/LevelProgress'
+import StoryCard from '../components/StoryCard'
 
 const Profile = () => {
   const { user, profile, refreshProfile, isVerified } = useAuth()
+  const navigate = useNavigate()
   const { data: myStories, refetch: refetchStories } = useAuthorStories(user?.id, false)
   const { mutate: updateProfile } = useUpdateProfile()
   const { data: verificationRequest, refetch: refetchRequest } = useMyVerificationRequest(user?.id)
@@ -88,15 +91,9 @@ const Profile = () => {
 
     setRequestingVerification(true)
     try {
-      const { data, error } = await supabase
-        .from('verification_requests')
-        .insert([{ user_id: user.id, stories_count: publishedCount, status: 'pending' }])
-        .select()
-        .single()
-      
-      if (error) throw error
+      await verificationHelpers.createRequest(user.id, publishedCount)
+      await refetchRequest()
       toast.success('تم إرسال طلب التوثيق بنجاح')
-      refetchRequest()
     } catch (error) {
       toast.error(error.message)
     } finally {
@@ -108,7 +105,7 @@ const Profile = () => {
     if (window.confirm('هل أنت متأكد من حذف هذه القصة؟')) {
       try {
         await storyHelpers.delete(storyId)
-        refetchStories()
+        await refetchStories()
         toast.success('تم حذف القصة')
       } catch (error) {
         toast.error('حدث خطأ أثناء حذف القصة')
@@ -147,6 +144,7 @@ const Profile = () => {
                 <FiEdit2 className="text-white text-sm" />
                 <input type="file" accept="image/*" onChange={handleAvatarUpload} className="hidden" disabled={uploading} />
               </label>
+              {uploading && <p className="text-xs text-[var(--text-muted)] mt-1">جاري الرفع...</p>}
             </div>
 
             <h2 className="text-xl font-bold">{profile?.full_name}</h2>
@@ -249,7 +247,7 @@ const Profile = () => {
                   <div key={story.id} className="card p-4">
                     <div className="flex gap-4">
                       <img
-                        src={story.cover_image || 'https://placehold.co/400x300'}
+                        src={story.cover_image || 'https://placehold.co/400x300/f5ebd3/8c7341?text=No+Cover'}
                         alt={story.title?.ar}
                         className="w-20 h-20 object-cover rounded-lg"
                       />
@@ -342,7 +340,7 @@ const Profile = () => {
                   <Link key={history.id} to={`/story/${history.story_id}`} className="card p-4 block hover:shadow-lg transition-all">
                     <div className="flex gap-4">
                       <img
-                        src={history.story?.cover_image || 'https://placehold.co/400x300'}
+                        src={history.story?.cover_image || 'https://placehold.co/400x300/f5ebd3/8c7341?text=No+Cover'}
                         alt={history.story?.title?.ar}
                         className="w-16 h-16 object-cover rounded-lg"
                       />
