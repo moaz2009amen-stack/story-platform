@@ -35,3 +35,6 @@ Thumbs.db
 
 # Supabase
 supabase/.temp/
+
+# Build
+build/
