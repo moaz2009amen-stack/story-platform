@@ -1,440 +1,398 @@
 import { useState, useEffect } from 'react'
-import { Link } from 'react-router-dom'
-import { motion, AnimatePresence } from 'framer-motion'
-import {
-  RiUser3Line, RiBookOpenLine, RiPencilLine,
-  RiTrophyLine, RiTimeLine, RiEyeLine,
-  RiEditLine, RiCheckLine, RiCloseLine,
-  RiImageLine, RiCalendarLine, RiMailLine,
-  RiPhoneLine, RiLockLine,
-} from 'react-icons/ri'
-import Navbar from '../components/Navbar'
-import Footer from '../components/Footer'
-import { useAuth } from '../App'
-import { storyHelpers, readingHelpers, profileHelpers, supabase } from '../lib/supabase'
+import { useAuth } from '../contexts/AuthContext'
+import { useUpdateProfile, useMyVerificationRequest } from '../hooks/useProfile'
+import { useAuthorStories } from '../hooks/useStories'
+import { readingHelpers, favoritesHelpers, storyHelpers } from '../lib/supabase'
+import { uploadAvatar } from '../lib/uploadImage'
+import { motion } from 'framer-motion'
+import toast from 'react-hot-toast'
+import { FiUser, FiMail, FiEdit2, FiBookOpen, FiClock, FiHeart, FiAward, FiCheckCircle, FiAlertCircle, FiTrash2, FiPlus } from 'react-icons/fi'
+import UserPoints from '../components/Gamification/UserPoints'
+import Badges from '../components/Gamification/Badges'
+import LevelProgress from '../components/Gamification/LevelProgress'
 
-const ACHIEVEMENTS = [
-  { id: 'first_story',  icon: '✍️', title: 'أول قصة',    desc: 'نشرت قصتك الأولى',        check: (s) => s.created > 0 },
-  { id: 'reader',       icon: '📖', title: 'قارئ نشط',   desc: 'قرأت 5 قصص على الأقل',    check: (s) => s.read >= 5 },
-  { id: 'explorer',     icon: '🗺️', title: 'مستكشف',     desc: 'اكتشفت 10 نهايات مختلفة', check: (s) => s.endings >= 10 },
-  { id: 'storyteller',  icon: '🏆', title: 'حكواتي',     desc: 'نشرت 3 قصص أو أكثر',      check: (s) => s.created >= 3 },
-]
+const Profile = () => {
+  const { user, profile, refreshProfile, isVerified } = useAuth()
+  const { data: myStories, refetch: refetchStories } = useAuthorStories(user?.id, false)
+  const { mutate: updateProfile } = useUpdateProfile()
+  const { data: verificationRequest, refetch: refetchRequest } = useMyVerificationRequest(user?.id)
+  
+  const [activeTab, setActiveTab] = useState('stories')
+  const [readingHistory, setReadingHistory] = useState([])
+  const [favorites, setFavorites] = useState([])
+  const [isEditing, setIsEditing] = useState(false)
+  const [editForm, setEditForm] = useState({ fullName: '', bio: '', username: '' })
+  const [uploading, setUploading] = useState(false)
+  const [requestingVerification, setRequestingVerification] = useState(false)
 
-/* ── Account Settings Modal ─────────────────── */
-function AccountSettings({ user, profile, onClose, onUpdate }) {
-  const [tab, setTab] = useState('email')
-  const [loading, setLoading] = useState(false)
-  const [success, setSuccess] = useState('')
-  const [error, setError] = useState('')
-
-  const [emailForm, setEmailForm] = useState({ newEmail: '' })
-  const [phoneForm, setPhoneForm] = useState({ phone: profile?.phone || '' })
-
-  async function updateEmail(e) {
-    e.preventDefault()
-    setError(''); setSuccess(''); setLoading(true)
-    const { error } = await supabase.auth.updateUser({ email: emailForm.newEmail })
-    if (error) setError('حدث خطأ. تأكد من صحة الإيميل.')
-    else setSuccess('تم إرسال رابط التأكيد للإيميل الجديد. تحقق من بريدك.')
-    setLoading(false)
-  }
-
-  async function updatePhone(e) {
-    e.preventDefault()
-    setError(''); setSuccess(''); setLoading(true)
-    if (!/^[0-9+\s]{7,15}$/.test(phoneForm.phone.trim())) {
-      setError('رقم الهاتف غير صحيح'); setLoading(false); return
+  useEffect(() => {
+    if (user && profile) {
+      loadReadingHistory()
+      loadFavorites()
+      setEditForm({
+        fullName: profile.full_name || '',
+        bio: profile.bio || '',
+        username: profile.username || '',
+      })
     }
-    const { error } = await supabase.from('profiles').update({ phone: phoneForm.phone }).eq('id', user.id)
-    if (error) setError('حدث خطأ أثناء الحفظ.')
-    else { setSuccess('تم تحديث رقم الهاتف.'); onUpdate({ phone: phoneForm.phone }) }
-    setLoading(false)
+  }, [user, profile])
+
+  const loadReadingHistory = async () => {
+    const history = await readingHelpers.getHistory(user.id)
+    setReadingHistory(history)
   }
+
+  const loadFavorites = async () => {
+    const favs = await favoritesHelpers.getUserFavorites(user.id)
+    setFavorites(favs)
+  }
+
+  const handleAvatarUpload = async (e) => {
+    const file = e.target.files[0]
+    if (!file) return
+
+    setUploading(true)
+    try {
+      const avatarUrl = await uploadAvatar(file)
+      await updateProfile({ userId: user.id, updates: { avatar_url: avatarUrl } })
+      await refreshProfile()
+      toast.success('تم تحديث الصورة الشخصية')
+    } catch (error) {
+      toast.error(error.message)
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  const handleUpdateProfile = async () => {
+    if (!editForm.fullName.trim()) {
+      toast.error('الاسم الكامل مطلوب')
+      return
+    }
+
+    try {
+      await updateProfile({ userId: user.id, updates: { full_name: editForm.fullName, bio: editForm.bio } })
+      await refreshProfile()
+      setIsEditing(false)
+    } catch (error) {
+      toast.error(error.message)
+    }
+  }
+
+  const handleRequestVerification = async () => {
+    const publishedCount = myStories?.filter(s => s.is_published).length || 0
+    if (publishedCount < 10) {
+      toast.error(`يجب أن تنشر ${10 - publishedCount} قصة أخرى قبل طلب التوثيق`)
+      return
+    }
+
+    setRequestingVerification(true)
+    try {
+      const { data, error } = await supabase
+        .from('verification_requests')
+        .insert([{ user_id: user.id, stories_count: publishedCount, status: 'pending' }])
+        .select()
+        .single()
+      
+      if (error) throw error
+      toast.success('تم إرسال طلب التوثيق بنجاح')
+      refetchRequest()
+    } catch (error) {
+      toast.error(error.message)
+    } finally {
+      setRequestingVerification(false)
+    }
+  }
+
+  const handleDeleteStory = async (storyId) => {
+    if (window.confirm('هل أنت متأكد من حذف هذه القصة؟')) {
+      try {
+        await storyHelpers.delete(storyId)
+        refetchStories()
+        toast.success('تم حذف القصة')
+      } catch (error) {
+        toast.error('حدث خطأ أثناء حذف القصة')
+      }
+    }
+  }
+
+  const publishedCount = myStories?.filter(s => s.is_published).length || 0
+  const canRequestVerification = publishedCount >= 10 && !isVerified && !verificationRequest
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}>
-      <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
-        className="w-full max-w-md rounded-2xl overflow-hidden"
-        style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-default)' }}>
-
-        {/* Header */}
-        <div className="flex items-center justify-between p-5 border-b" style={{ borderColor: 'var(--border-subtle)' }}>
-          <h3 className="font-bold text-base" style={{ color: 'var(--text-primary)' }}>إعدادات الحساب</h3>
-          <button onClick={onClose} className="btn-ghost w-8 h-8 p-0 rounded-lg">
-            <RiCloseLine style={{ color: 'var(--text-muted)' }} />
-          </button>
-        </div>
-
-        {/* Tabs */}
-        <div className="flex border-b" style={{ borderColor: 'var(--border-subtle)' }}>
-          {[
-            { id: 'email', label: 'تغيير الإيميل',   icon: RiMailLine },
-            { id: 'phone', label: 'تغيير الهاتف',    icon: RiPhoneLine },
-          ].map(t => (
-            <button key={t.id} onClick={() => { setTab(t.id); setError(''); setSuccess('') }}
-              className="flex-1 flex items-center justify-center gap-2 py-3 text-sm font-semibold transition-all"
-              style={{
-                borderBottom: tab === t.id ? '2px solid #f59e0b' : '2px solid transparent',
-                color: tab === t.id ? '#f59e0b' : 'var(--text-muted)',
-              }}>
-              <t.icon /> {t.label}
-            </button>
-          ))}
-        </div>
-
-        <div className="p-5 space-y-4">
-          {/* Messages */}
-          {success && (
-            <div className="flex items-center gap-2 p-3 rounded-xl text-sm"
-              style={{ background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.2)', color: '#22c55e' }}>
-              <RiCheckLine /> {success}
-            </div>
-          )}
-          {error && (
-            <div className="p-3 rounded-xl text-sm"
-              style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', color: '#ef4444' }}>
-              {error}
-            </div>
-          )}
-
-          {/* Email Tab */}
-          {tab === 'email' && (
-            <form onSubmit={updateEmail} className="space-y-4">
-              <div>
-                <label className="text-xs font-semibold mb-1 block" style={{ color: 'var(--text-secondary)' }}>
-                  الإيميل الحالي
-                </label>
-                <p className="input-base text-sm py-2.5 opacity-60" dir="ltr">{user?.email}</p>
-              </div>
-              <div>
-                <label className="text-xs font-semibold mb-1 block" style={{ color: 'var(--text-secondary)' }}>
-                  الإيميل الجديد *
-                </label>
-                <div className="relative">
-                  <RiMailLine className="absolute right-3.5 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-muted)' }} />
-                  <input type="email" required dir="ltr" placeholder="new@example.com"
-                    value={emailForm.newEmail}
-                    onChange={e => setEmailForm({ newEmail: e.target.value })}
-                    className="input-base pr-10 text-sm" />
-                </div>
-              </div>
-              <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                سيُرسل رابط تأكيد للإيميل الجديد — لن يتغير حتى تؤكده.
-              </p>
-              <button type="submit" disabled={loading} className="btn-primary w-full justify-center py-3">
-                {loading ? <span className="w-4 h-4 border-2 border-black/30 border-t-black rounded-full animate-spin" /> : 'إرسال رابط التأكيد'}
-              </button>
-            </form>
-          )}
-
-          {/* Phone Tab */}
-          {tab === 'phone' && (
-            <form onSubmit={updatePhone} className="space-y-4">
-              <div>
-                <label className="text-xs font-semibold mb-1 block" style={{ color: 'var(--text-secondary)' }}>
-                  رقم الهاتف *
-                </label>
-                <div className="relative">
-                  <RiPhoneLine className="absolute right-3.5 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-muted)' }} />
-                  <input type="tel" required dir="ltr" placeholder="01012345678"
-                    value={phoneForm.phone}
-                    onChange={e => setPhoneForm({ phone: e.target.value })}
-                    className="input-base pr-10 text-sm" />
-                </div>
-              </div>
-              <button type="submit" disabled={loading} className="btn-primary w-full justify-center py-3">
-                {loading ? <span className="w-4 h-4 border-2 border-black/30 border-t-black rounded-full animate-spin" /> : 'حفظ رقم الهاتف'}
-              </button>
-            </form>
-          )}
-        </div>
-      </motion.div>
-    </div>
-  )
-}
-
-/* ── Main Page ──────────────────────────────── */
-export default function Profile() {
-  const { user, profile, setProfile } = useAuth()
-  const [myStories, setMyStories] = useState([])
-  const [history,   setHistory]   = useState([])
-  const [tab,       setTab]       = useState('stories')
-  const [editing,   setEditing]   = useState(false)
-  const [saving,    setSaving]    = useState(false)
-  const [showSettings, setShowSettings] = useState(false)
-  const [editForm, setEditForm]   = useState({ full_name: '', bio: '' })
-
-  useEffect(() => {
-    if (!user) return
-    storyHelpers.getByAuthor(user.id).then(({ data }) => data && setMyStories(data))
-    readingHelpers.getHistory(user.id).then(({ data }) => data && setHistory(data))
-  }, [user])
-
-  useEffect(() => {
-    if (profile) setEditForm({ full_name: profile.full_name || '', bio: profile.bio || '' })
-  }, [profile])
-
-  const stats = {
-    created: myStories.length,
-    read:    history.length,
-    endings: history.reduce((acc, h) => acc + (h.progress >= 100 ? 1 : 0), 0),
-  }
-
-  async function saveProfile() {
-    setSaving(true)
-    const { data } = await profileHelpers.updateProfile(user.id, editForm)
-    if (data) setProfile(data)
-    setSaving(false)
-    setEditing(false)
-  }
-
-  const TABS = [
-    { id: 'stories',      label: 'قصصي',        icon: RiBookOpenLine, count: myStories.length },
-    { id: 'history',      label: 'سجل القراءة',  icon: RiTimeLine,    count: history.length },
-    { id: 'achievements', label: 'الإنجازات',    icon: RiTrophyLine,  count: null },
-  ]
-
-  return (
-    <div style={{ background: 'var(--bg-base)', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
-      <Navbar />
-
-      {showSettings && (
-        <AccountSettings
-          user={user}
-          profile={profile}
-          onClose={() => setShowSettings(false)}
-          onUpdate={(updates) => setProfile(p => ({ ...p, ...updates }))}
-        />
-      )}
-
-      <div className="page-container py-10">
-        <div className="grid lg:grid-cols-[320px,1fr] gap-8">
-
-          {/* Sidebar */}
-          <div className="space-y-5">
-
-            {/* Profile Card */}
-            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="card-flat p-6 text-center">
-              <div className="relative inline-block mb-4">
-                <div className="w-20 h-20 rounded-2xl flex items-center justify-center mx-auto text-3xl font-black"
-                  style={{ background: 'linear-gradient(135deg, #f59e0b, #d97706)', color: '#0f0d0a' }}>
-                  {(profile?.full_name || profile?.username || 'م')[0]}
-                </div>
-              </div>
-
-              {editing ? (
-                <div className="space-y-3 text-right">
-                  <input type="text" value={editForm.full_name}
-                    onChange={e => setEditForm(f => ({ ...f, full_name: e.target.value }))}
-                    placeholder="الاسم الكامل" className="input-base text-sm" />
-                  <textarea value={editForm.bio}
-                    onChange={e => setEditForm(f => ({ ...f, bio: e.target.value }))}
-                    placeholder="نبذة عنك..." rows={3} className="input-base text-sm resize-none" />
-                  <div className="flex gap-2">
-                    <button onClick={saveProfile} disabled={saving} className="btn-primary flex-1 justify-center py-2 text-sm">
-                      {saving ? '...' : <><RiCheckLine /> حفظ</>}
-                    </button>
-                    <button onClick={() => setEditing(false)} className="btn-secondary flex-1 justify-center py-2 text-sm">
-                      <RiCloseLine /> إلغاء
-                    </button>
-                  </div>
-                </div>
+    <div className="page-container">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        {/* Sidebar */}
+        <div className="lg:col-span-1 space-y-6">
+          {/* Profile Card */}
+          <motion.div 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="card p-6 text-center"
+          >
+            {/* Avatar */}
+            <div className="relative inline-block mb-4">
+              {profile?.avatar_url ? (
+                <img
+                  src={profile.avatar_url}
+                  alt={profile.full_name}
+                  className="w-32 h-32 rounded-full object-cover mx-auto border-4 border-gold-500"
+                />
               ) : (
-                <>
-                  <h2 className="text-xl font-bold mb-1" style={{ color: 'var(--text-primary)' }}>
-                    {profile?.full_name || 'مستخدم'}
-                  </h2>
-                  <p className="text-sm mb-1" style={{ color: 'var(--text-muted)' }}>@{profile?.username || 'user'}</p>
-                  {profile?.phone && (
-                    <p className="text-xs flex items-center justify-center gap-1 mb-1" style={{ color: 'var(--text-muted)' }}>
-                      <RiPhoneLine />{profile.phone}
-                    </p>
-                  )}
-                  <p className="text-xs flex items-center justify-center gap-1 mb-1" style={{ color: 'var(--text-muted)' }}>
-                    <RiMailLine />{user?.email}
-                  </p>
-                  {profile?.bio && (
-                    <p className="text-sm mt-3 mb-2 leading-relaxed" style={{ color: 'var(--text-secondary)' }}>{profile.bio}</p>
-                  )}
-                  <p className="text-xs flex items-center justify-center gap-1 mb-4" style={{ color: 'var(--text-muted)' }}>
-                    <RiCalendarLine />
-                    انضم {new Date(user?.created_at).toLocaleDateString('ar-EG', { month: 'long', year: 'numeric' })}
-                  </p>
-                  <div className="flex flex-col gap-2">
-                    <button onClick={() => setEditing(true)} className="btn-secondary w-full justify-center text-sm py-2">
-                      <RiEditLine /> تعديل الملف
-                    </button>
-                    <button onClick={() => setShowSettings(true)} className="btn-ghost w-full justify-center text-sm py-2">
-                      <RiLockLine /> إعدادات الحساب
-                    </button>
-                  </div>
-                </>
+                <div className="w-32 h-32 rounded-full bg-gold-500 flex items-center justify-center text-white text-4xl font-bold mx-auto">
+                  {profile?.full_name?.charAt(0)}
+                </div>
               )}
-            </motion.div>
-
-            {/* Stats */}
-            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="card-flat p-5">
-              <h3 className="font-bold mb-4 text-sm" style={{ color: 'var(--text-muted)' }}>إحصائياتك</h3>
-              <div className="space-y-3">
-                {[
-                  { icon: RiPencilLine,   label: 'قصص منشأة',     value: stats.created, color: '#f59e0b' },
-                  { icon: RiBookOpenLine, label: 'قصص مقروءة',    value: stats.read,    color: '#22c55e' },
-                  { icon: RiTrophyLine,   label: 'نهايات مكتشفة', value: stats.endings, color: '#a855f7' },
-                ].map(s => (
-                  <div key={s.label} className="flex items-center justify-between">
-                    <div className="flex items-center gap-2 text-sm" style={{ color: 'var(--text-secondary)' }}>
-                      <s.icon style={{ color: s.color }} />
-                      {s.label}
-                    </div>
-                    <span className="font-bold text-lg" style={{ color: 'var(--text-primary)' }}>{s.value}</span>
-                  </div>
-                ))}
-              </div>
-            </motion.div>
-
-            {/* Quick Create */}
-            <Link to="/create" className="card-flat p-5 flex items-center gap-3 hover:border-yellow-500/30 transition-colors group">
-              <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: 'rgba(245,158,11,0.1)' }}>
-                <RiPencilLine style={{ color: '#f59e0b' }} />
-              </div>
-              <div>
-                <p className="font-semibold text-sm group-hover:text-yellow-500 transition-colors" style={{ color: 'var(--text-primary)' }}>اكتب قصة جديدة</p>
-                <p className="text-xs" style={{ color: 'var(--text-muted)' }}>أنشئ قصتك التفاعلية</p>
-              </div>
-            </Link>
-          </div>
-
-          {/* Main Content */}
-          <div>
-            <div className="flex gap-1 mb-8 p-1 rounded-2xl" style={{ background: 'var(--bg-surface)' }}>
-              {TABS.map(t => (
-                <button key={t.id} onClick={() => setTab(t.id)}
-                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200"
-                  style={{
-                    background: tab === t.id ? 'var(--bg-elevated)' : 'transparent',
-                    color: tab === t.id ? 'var(--text-primary)' : 'var(--text-muted)',
-                    boxShadow: tab === t.id ? 'var(--shadow-sm)' : 'none',
-                  }}>
-                  <t.icon />
-                  <span className="hidden sm:inline">{t.label}</span>
-                  {t.count !== null && <span className="badge text-xs px-1.5 py-0.5">{t.count}</span>}
-                </button>
-              ))}
+              <label className="absolute bottom-0 right-0 p-1 bg-gold-500 rounded-full cursor-pointer hover:bg-gold-600 transition-colors">
+                <FiEdit2 className="text-white text-sm" />
+                <input type="file" accept="image/*" onChange={handleAvatarUpload} className="hidden" disabled={uploading} />
+              </label>
             </div>
 
-            {/* My Stories */}
-            {tab === 'stories' && (
-              <div>
-                {myStories.length === 0 ? (
-                  <div className="text-center py-16">
-                    <RiPencilLine style={{ fontSize: '3rem', color: 'var(--text-muted)', opacity: 0.3, margin: '0 auto 1rem' }} />
-                    <p className="font-semibold mb-2" style={{ color: 'var(--text-secondary)' }}>لم تنشئ أي قصة بعد</p>
-                    <Link to="/create" className="btn-primary mt-4 inline-flex">ابدأ الكتابة</Link>
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    {myStories.map((story, i) => {
-                      const title = story.title?.ar || story.title || 'بلا عنوان'
-                      return (
-                        <motion.div key={story.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
-                          transition={{ delay: i * 0.07 }} className="card-flat flex items-center gap-4 p-4">
-                          <div className="w-16 h-16 rounded-xl overflow-hidden shrink-0" style={{ background: 'var(--bg-subtle)' }}>
-                            {story.cover_image
-                              ? <img src={story.cover_image} alt={title} className="w-full h-full object-cover" />
-                              : <div className="w-full h-full flex items-center justify-center">
-                                  <RiImageLine style={{ color: 'var(--text-muted)', opacity: 0.4 }} />
-                                </div>
-                            }
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 mb-1">
-                              <h4 className="font-bold text-sm truncate" style={{ color: 'var(--text-primary)' }}>{title}</h4>
-                              <span className={`badge text-xs ${story.is_published ? 'badge-green' : ''}`}>
-                                {story.is_published ? 'منشور' : 'مسودة'}
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-4 text-xs" style={{ color: 'var(--text-muted)' }}>
-                              <span className="flex items-center gap-1"><RiEyeLine />{story.views || 0} مشاهدة</span>
-                              <span className="flex items-center gap-1"><RiTimeLine />{story.reading_time || 5}د</span>
-                            </div>
-                          </div>
-                          <Link to={`/story/${story.id}`} className="btn-ghost text-xs px-3 py-1.5 shrink-0">قراءة</Link>
-                        </motion.div>
-                      )
-                    })}
-                  </div>
-                )}
+            <h2 className="text-xl font-bold">{profile?.full_name}</h2>
+            <p className="text-[var(--text-muted)] text-sm mb-2">@{profile?.username}</p>
+            {isVerified && (
+              <div className="inline-flex items-center gap-1 bg-green-100 dark:bg-green-900/30 text-green-600 px-3 py-1 rounded-full text-sm mb-3">
+                <FiCheckCircle />
+                حساب موثق
               </div>
             )}
+            {profile?.bio && <p className="text-sm mb-4">{profile.bio}</p>}
 
-            {/* History */}
-            {tab === 'history' && (
-              <div>
-                {history.length === 0 ? (
-                  <div className="text-center py-16">
-                    <RiBookOpenLine style={{ fontSize: '3rem', color: 'var(--text-muted)', opacity: 0.3, margin: '0 auto 1rem' }} />
-                    <p className="font-semibold mb-2" style={{ color: 'var(--text-secondary)' }}>لم تقرأ أي قصة بعد</p>
-                    <Link to="/explore" className="btn-primary mt-4 inline-flex">استكشف القصص</Link>
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    {history.map((h, i) => {
-                      const title = h.story?.title?.ar || h.story?.title || 'قصة'
-                      return (
-                        <motion.div key={h.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
-                          transition={{ delay: i * 0.07 }} className="card-flat flex items-center gap-4 p-4">
-                          <div className="w-14 h-14 rounded-xl overflow-hidden shrink-0" style={{ background: 'var(--bg-subtle)' }}>
-                            {h.story?.cover_image
-                              ? <img src={h.story.cover_image} alt={title} className="w-full h-full object-cover" />
-                              : <div className="w-full h-full flex items-center justify-center">
-                                  <RiBookOpenLine style={{ color: 'var(--text-muted)', opacity: 0.35 }} />
-                                </div>
-                            }
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <h4 className="font-bold text-sm mb-2 truncate" style={{ color: 'var(--text-primary)' }}>{title}</h4>
-                            <div className="w-full rounded-full h-1.5" style={{ background: 'var(--bg-subtle)' }}>
-                              <div className="h-full rounded-full transition-all"
-                                style={{ width: `${h.progress || 0}%`, background: 'linear-gradient(to left, #f59e0b, #d97706)' }} />
-                            </div>
-                            <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>{h.progress || 0}% مكتمل</p>
-                          </div>
-                          <Link to={`/story/${h.story_id}`} className="btn-primary text-xs px-3 py-1.5 shrink-0">استكمل</Link>
-                        </motion.div>
-                      )
-                    })}
-                  </div>
-                )}
+            {isEditing ? (
+              <div className="space-y-3 mt-4">
+                <input
+                  type="text"
+                  value={editForm.fullName}
+                  onChange={(e) => setEditForm({ ...editForm, fullName: e.target.value })}
+                  className="input-base text-sm"
+                  placeholder="الاسم الكامل"
+                />
+                <textarea
+                  value={editForm.bio}
+                  onChange={(e) => setEditForm({ ...editForm, bio: e.target.value })}
+                  className="input-base text-sm"
+                  rows="2"
+                  placeholder="نبذة عنك"
+                />
+                <div className="flex gap-2">
+                  <button onClick={handleUpdateProfile} className="btn-primary flex-1 text-sm">حفظ</button>
+                  <button onClick={() => setIsEditing(false)} className="btn-secondary flex-1 text-sm">إلغاء</button>
+                </div>
               </div>
+            ) : (
+              <button onClick={() => setIsEditing(true)} className="btn-secondary w-full text-sm">
+                <FiEdit2 className="inline ml-1" />
+                تعديل الملف الشخصي
+              </button>
             )}
+          </motion.div>
 
-            {/* Achievements */}
-            {tab === 'achievements' && (
-              <div className="grid sm:grid-cols-2 gap-4">
-                {ACHIEVEMENTS.map((ach, i) => {
-                  const unlocked = ach.check(stats)
-                  return (
-                    <motion.div key={ach.id} initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
-                      transition={{ delay: i * 0.1 }} className="card-flat p-5 flex items-center gap-4"
-                      style={{ opacity: unlocked ? 1 : 0.5 }}>
-                      <div className="text-3xl">{ach.icon}</div>
-                      <div>
-                        <p className="font-bold text-sm" style={{ color: 'var(--text-primary)' }}>{ach.title}</p>
-                        <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{ach.desc}</p>
-                      </div>
-                      {unlocked && <RiTrophyLine className="text-yellow-500 text-xl mr-auto shrink-0" />}
-                    </motion.div>
-                  )
-                })}
-              </div>
-            )}
+          {/* Points & Badges */}
+          {profile && (
+            <>
+              <UserPoints 
+                points={profile.points || 0} 
+                level={profile.level || 1}
+                totalStories={publishedCount}
+                totalViews={myStories?.reduce((sum, s) => sum + (s.views || 0), 0)}
+                totalLikes={myStories?.reduce((sum, s) => sum + (s.likes || 0), 0)}
+              />
+              <LevelProgress 
+                level={profile.level || 1}
+                points={profile.points || 0}
+                nextLevelPoints={((profile.level || 1) + 1) * 1000}
+              />
+              <Badges userBadges={[]} />
+            </>
+          )}
+        </div>
+
+        {/* Main Content */}
+        <div className="lg:col-span-2">
+          {/* Tabs */}
+          <div className="flex border-b border-[var(--border-light)] mb-6">
+            {[
+              { id: 'stories', label: 'قصصي', icon: FiBookOpen, count: myStories?.length },
+              { id: 'reading', label: 'سجل القراءة', icon: FiClock, count: readingHistory.length },
+              { id: 'favorites', label: 'المفضلة', icon: FiHeart, count: favorites.length },
+            ].map(tab => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`flex items-center gap-2 px-4 py-3 font-semibold transition-all duration-300 ${
+                  activeTab === tab.id
+                    ? 'text-gold-500 border-b-2 border-gold-500'
+                    : 'text-[var(--text-muted)] hover:text-gold-500'
+                }`}
+              >
+                <tab.icon />
+                {tab.label}
+                {tab.count > 0 && <span className="badge badge-gold text-xs">{tab.count}</span>}
+              </button>
+            ))}
           </div>
+
+          {/* Stories Tab */}
+          {activeTab === 'stories' && (
+            <div className="space-y-4">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="font-bold">قصصي ({myStories?.length || 0})</h3>
+                <Link to="/create-story" className="btn-primary text-sm py-2 flex items-center gap-1">
+                  <FiPlus />
+                  قصة جديدة
+                </Link>
+              </div>
+
+              {myStories?.length > 0 ? (
+                myStories.map(story => (
+                  <div key={story.id} className="card p-4">
+                    <div className="flex gap-4">
+                      <img
+                        src={story.cover_image || 'https://placehold.co/400x300'}
+                        alt={story.title?.ar}
+                        className="w-20 h-20 object-cover rounded-lg"
+                      />
+                      <div className="flex-1">
+                        <h4 className="font-bold">{story.title?.ar || story.title?.en}</h4>
+                        <p className="text-sm text-[var(--text-muted)] line-clamp-1">
+                          {story.description?.ar || story.description?.en}
+                        </p>
+                        <div className="flex gap-3 mt-2 text-xs text-[var(--text-muted)]">
+                          <span>{story.story_type === 'interactive' ? '🔀 تفاعلية' : '📖 عادية'}</span>
+                          <span>{story.views?.toLocaleString()} مشاهدة</span>
+                          <span>{story.likes?.toLocaleString()} إعجاب</span>
+                          {story.is_published ? (
+                            <span className="text-green-500">✓ منشورة</span>
+                          ) : (
+                            <span className="text-yellow-500">📝 مسودة</span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex flex-col gap-2">
+                        <Link to={`/edit-story/${story.id}`} className="btn-secondary text-sm py-1 px-3">
+                          تعديل
+                        </Link>
+                        <button onClick={() => handleDeleteStory(story.id)} className="btn-danger text-sm py-1 px-3">
+                          <FiTrash2 />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="text-center py-8 bg-[var(--bg-surface)] rounded-xl">
+                  <p className="text-[var(--text-muted)]">ليس لديك قصص بعد</p>
+                  <Link to="/create-story" className="text-gold-500 hover:underline mt-2 inline-block">
+                    اكتب أول قصة لك
+                  </Link>
+                </div>
+              )}
+
+              {/* Verification Request Section */}
+              {canRequestVerification && (
+                <div className="bg-gradient-to-r from-gold-500/20 to-amber-500/20 rounded-xl p-4 mt-6">
+                  <div className="flex items-center justify-between flex-wrap gap-4">
+                    <div>
+                      <h4 className="font-bold flex items-center gap-2">
+                        <FiAward />
+                        طلب التوثيق
+                      </h4>
+                      <p className="text-sm text-[var(--text-muted)]">
+                        لديك {publishedCount} قصة منشورة. يمكنك طلب إشارة التحقق الزرقاء
+                      </p>
+                    </div>
+                    <button
+                      onClick={handleRequestVerification}
+                      disabled={requestingVerification}
+                      className="btn-primary disabled:opacity-50"
+                    >
+                      {requestingVerification ? 'جاري الإرسال...' : 'اطلب التوثيق'}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Verification Request Status */}
+              {verificationRequest && !isVerified && (
+                <div className={`rounded-xl p-4 ${
+                  verificationRequest.status === 'pending'
+                    ? 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-200'
+                    : verificationRequest.status === 'rejected'
+                    ? 'bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-200'
+                    : ''
+                }`}>
+                  <div className="flex items-center gap-2">
+                    <FiAlertCircle />
+                    <span>
+                      {verificationRequest.status === 'pending' && 'طلب التوثيق قيد المراجعة'}
+                      {verificationRequest.status === 'rejected' && `تم رفض الطلب: ${verificationRequest.admin_note}`}
+                    </span>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Reading History Tab */}
+          {activeTab === 'reading' && (
+            <div className="space-y-4">
+              {readingHistory.length > 0 ? (
+                readingHistory.map(history => (
+                  <Link key={history.id} to={`/story/${history.story_id}`} className="card p-4 block hover:shadow-lg transition-all">
+                    <div className="flex gap-4">
+                      <img
+                        src={history.story?.cover_image || 'https://placehold.co/400x300'}
+                        alt={history.story?.title?.ar}
+                        className="w-16 h-16 object-cover rounded-lg"
+                      />
+                      <div className="flex-1">
+                        <h4 className="font-bold">{history.story?.title?.ar || history.story?.title?.en}</h4>
+                        <div className="mt-2">
+                          <div className="flex justify-between text-xs text-[var(--text-muted)] mb-1">
+                            <span>تقدم القراءة</span>
+                            <span>{history.progress}%</span>
+                          </div>
+                          <div className="h-1.5 bg-[var(--bg-surface)] rounded-full overflow-hidden">
+                            <div className="h-full bg-gold-500 rounded-full" style={{ width: `${history.progress}%` }} />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </Link>
+                ))
+              ) : (
+                <div className="text-center py-8 bg-[var(--bg-surface)] rounded-xl">
+                  <p className="text-[var(--text-muted)]">لم تقرأ أي قصة بعد</p>
+                  <Link to="/explore" className="text-gold-500 hover:underline mt-2 inline-block">
+                    ابدأ القراءة الآن
+                  </Link>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Favorites Tab */}
+          {activeTab === 'favorites' && (
+            <div className="space-y-4">
+              {favorites.length > 0 ? (
+                favorites.map(story => (
+                  <StoryCard key={story.id} story={story} />
+                ))
+              ) : (
+                <div className="text-center py-8 bg-[var(--bg-surface)] rounded-xl">
+                  <p className="text-[var(--text-muted)]">ليس لديك قصص مفضلة بعد</p>
+                  <Link to="/explore" className="text-gold-500 hover:underline mt-2 inline-block">
+                    استكشف القصص وأضفها إلى المفضلة
+                  </Link>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
-
-      <div style={{ flex: 1 }} />
-      <Footer />
     </div>
   )
 }
+
+export default Profile
