@@ -1,382 +1,166 @@
-import { useState, useEffect, useCallback } from 'react'
-import { Link } from 'react-router-dom'
-import { motion, AnimatePresence } from 'framer-motion'
-import {
-  RiSearchLine, RiGridLine, RiListCheck, RiBookOpenLine,
-  RiTimeLine, RiEyeLine, RiHeartLine, RiUser3Line,
-  RiFilterLine, RiArrowDownLine, RiStarFill,
-} from 'react-icons/ri'
-import Navbar from '../components/Navbar'
-import Footer from '../components/Footer'
-import { storyHelpers, supabase } from '../lib/supabase'
+import { useState, useEffect } from 'react'
+import { useSearchParams } from 'react-router-dom'
+import { usePublishedStories } from '../hooks/useStories'
+import StoryCard from '../components/StoryCard'
+import { FiSearch, FiFilter, FiX } from 'react-icons/fi'
+import { useDebounce } from '../hooks/useDebounce'
 
-const CATEGORIES = ['جميع التصنيفات', 'مغامرة', 'رعب', 'رومانسية', 'خيال علمي', 'تاريخية', 'جريمة', 'أخرى']
-const SORT_OPTIONS = [
-  { value: 'created_at', label: 'الأحدث' },
-  { value: 'oldest',     label: 'الأقدم' },
-  { value: 'views',      label: 'الأكثر مشاهدة' },
-  { value: 'likes',      label: 'الأكثر إعجابًا' },
+const categories = ['الكل', 'مغامرة', 'خيال', 'رومانسية', 'رعب', 'خيال علمي', 'دراما', 'كوميديا', 'تاريخي']
+const sortOptions = [
+  { value: 'most_viewed', label: 'الأكثر مشاهدة' },
+  { value: 'newest', label: 'الأحدث' },
+  { value: 'oldest', label: 'الأقدم' },
+  { value: 'most_liked', label: 'الأكثر إعجاباً' },
 ]
 
-/* ── Story Card Grid ────────────────────────── */
-function StoryCardGrid({ story, avgRating }) {
-  const title  = story.title?.ar  || story.title  || 'بلا عنوان'
-  const desc   = story.description?.ar || story.description || ''
-  const author = story.author?.full_name || story.author?.username || 'مجهول'
+const Explore = () => {
+  const [searchParams, setSearchParams] = useSearchParams()
+  const [search, setSearch] = useState(searchParams.get('search') || '')
+  const [category, setCategory] = useState(searchParams.get('category') || 'الكل')
+  const [sort, setSort] = useState(searchParams.get('sort') || 'most_viewed')
+  const [showFilters, setShowFilters] = useState(false)
+  
+  const debouncedSearch = useDebounce(search, 500)
+
+  const { data: stories, isLoading } = usePublishedStories({
+    search: debouncedSearch,
+    category: category === 'الكل' ? null : category,
+    sort,
+    limit: 30,
+  })
+
+  // تحديث URL عند تغيير الفلاتر
+  useEffect(() => {
+    const params = {}
+    if (search) params.search = search
+    if (category !== 'الكل') params.category = category
+    if (sort !== 'most_viewed') params.sort = sort
+    setSearchParams(params)
+  }, [search, category, sort, setSearchParams])
+
+  const clearFilters = () => {
+    setSearch('')
+    setCategory('الكل')
+    setSort('most_viewed')
+  }
+
+  const hasActiveFilters = search || category !== 'الكل' || sort !== 'most_viewed'
 
   return (
-    <Link to={`/story/${story.id}`} className="card block overflow-hidden group">
-      <div className="relative h-44 overflow-hidden"
-        style={{ background: 'linear-gradient(135deg, var(--bg-subtle), var(--bg-surface))' }}>
-        {story.cover_image ? (
-          <img src={story.cover_image} alt={title}
-            className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
-        ) : (
-          <div className="w-full h-full flex items-center justify-center">
-            <RiBookOpenLine style={{ fontSize: '2.5rem', color: 'var(--text-muted)', opacity: 0.35 }} />
-          </div>
-        )}
-        <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent" />
-        {story.category && (
-          <span className="absolute top-3 right-3 badge badge-gold text-xs">{story.category}</span>
-        )}
-      </div>
-      <div className="p-5">
-        <h3 className="font-bold text-sm mb-1.5 line-clamp-1 group-hover:text-yellow-500 transition-colors"
-          style={{ color: 'var(--text-primary)' }}>{title}</h3>
-        <p className="text-xs line-clamp-2 mb-4" style={{ color: 'var(--text-muted)', lineHeight: 1.6 }}>{desc}</p>
-        <div className="flex items-center justify-between text-xs" style={{ color: 'var(--text-muted)' }}>
-          <span className="flex items-center gap-1"><RiUser3Line />{author}</span>
-          <div className="flex items-center gap-3">
-            <span className="flex items-center gap-0.5"><RiEyeLine />{story.views || 0}</span>
-            <span className="flex items-center gap-0.5"><RiTimeLine />{story.reading_time || 5}د</span>
-          </div>
+    <div className="page-container">
+      <div className="mb-8">
+        <h1 className="text-3xl font-bold mb-4">استكشف القصص</h1>
+        
+        {/* Search Bar */}
+        <div className="relative mb-4">
+          <FiSearch className="absolute right-4 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="ابحث عن قصة..."
+            className="input-base pr-12"
+          />
         </div>
-        {/* عرض متوسط التقييم بالنجوم */}
-        {avgRating && (
-          <div className="flex items-center gap-1 mt-3 pt-2 border-t" style={{ borderColor: 'var(--border-subtle)' }}>
-            <RiStarFill className="text-yellow-500 text-xs" />
-            <span className="text-xs font-semibold" style={{ color: 'var(--text-primary)' }}>
-              {avgRating.toFixed(1)}
-            </span>
-          </div>
-        )}
-      </div>
-    </Link>
-  )
-}
 
-/* ── Story Card List ────────────────────────── */
-function StoryCardList({ story, avgRating }) {
-  const title  = story.title?.ar  || story.title  || 'بلا عنوان'
-  const desc   = story.description?.ar || story.description || ''
-  const author = story.author?.full_name || story.author?.username || 'مجهول'
+        {/* Filter Toggle Button (Mobile) */}
+        <button
+          onClick={() => setShowFilters(!showFilters)}
+          className="md:hidden w-full flex items-center justify-center gap-2 py-2 bg-[var(--bg-surface)] rounded-lg mb-4"
+        >
+          <FiFilter />
+          {showFilters ? 'إخفاء الفلاتر' : 'عرض الفلاتر'}
+          {hasActiveFilters && <span className="badge badge-gold">مفلتر</span>}
+        </button>
 
-  return (
-    <Link to={`/story/${story.id}`}
-      className="card flex gap-5 p-4 overflow-hidden group"
-      style={{ flexDirection: 'row' }}>
-      <div className="w-24 h-24 rounded-xl overflow-hidden shrink-0"
-        style={{ background: 'var(--bg-subtle)' }}>
-        {story.cover_image ? (
-          <img src={story.cover_image} alt={title}
-            className="w-full h-full object-cover transition-transform duration-400 group-hover:scale-105" />
-        ) : (
-          <div className="w-full h-full flex items-center justify-center">
-            <RiBookOpenLine style={{ color: 'var(--text-muted)', opacity: 0.35 }} />
+        {/* Filters */}
+        <div className={`${showFilters ? 'block' : 'hidden'} md:block space-y-4`}>
+          {/* Categories */}
+          <div>
+            <label className="block text-sm font-semibold mb-2">التصنيفات</label>
+            <div className="flex flex-wrap gap-2">
+              {categories.map((cat) => (
+                <button
+                  key={cat}
+                  onClick={() => setCategory(cat)}
+                  className={`px-3 py-1 rounded-full text-sm transition-all duration-300 ${
+                    category === cat
+                      ? 'bg-gold-500 text-white'
+                      : 'bg-[var(--bg-surface)] text-[var(--text-muted)] hover:bg-gold-100 dark:hover:bg-gold-900/30'
+                  }`}
+                >
+                  {cat}
+                </button>
+              ))}
+            </div>
           </div>
-        )}
-      </div>
-      <div className="flex-1 min-w-0 py-1">
-        <div className="flex items-start justify-between gap-2 mb-1">
-          <h3 className="font-bold text-sm group-hover:text-yellow-500 transition-colors line-clamp-1"
-            style={{ color: 'var(--text-primary)' }}>{title}</h3>
-          {story.category && <span className="badge badge-gold text-xs shrink-0">{story.category}</span>}
-        </div>
-        <p className="text-xs line-clamp-2 mb-3" style={{ color: 'var(--text-muted)', lineHeight: 1.6 }}>{desc}</p>
-        <div className="flex items-center gap-4 text-xs flex-wrap" style={{ color: 'var(--text-muted)' }}>
-          <span className="flex items-center gap-1"><RiUser3Line />{author}</span>
-          <span className="flex items-center gap-1"><RiEyeLine />{story.views || 0}</span>
-          <span className="flex items-center gap-1"><RiHeartLine />{story.likes || 0}</span>
-          <span className="flex items-center gap-1"><RiTimeLine />{story.reading_time || 5} دقائق</span>
-          {/* عرض متوسط التقييم بالنجوم */}
-          {avgRating && (
-            <span className="flex items-center gap-1">
-              <RiStarFill className="text-yellow-500 text-xs" />
-              <span className="text-xs font-semibold" style={{ color: 'var(--text-primary)' }}>
-                {avgRating.toFixed(1)}
-              </span>
-            </span>
+
+          {/* Sort */}
+          <div>
+            <label className="block text-sm font-semibold mb-2">ترتيب حسب</label>
+            <div className="flex flex-wrap gap-2">
+              {sortOptions.map((option) => (
+                <button
+                  key={option.value}
+                  onClick={() => setSort(option.value)}
+                  className={`px-3 py-1 rounded-full text-sm transition-all duration-300 ${
+                    sort === option.value
+                      ? 'bg-gold-500 text-white'
+                      : 'bg-[var(--bg-surface)] text-[var(--text-muted)] hover:bg-gold-100 dark:hover:bg-gold-900/30'
+                  }`}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Clear Filters */}
+          {hasActiveFilters && (
+            <button
+              onClick={clearFilters}
+              className="text-sm text-gold-500 hover:text-gold-600 flex items-center gap-1"
+            >
+              <FiX />
+              إلغاء جميع الفلاتر
+            </button>
           )}
         </div>
       </div>
-    </Link>
-  )
-}
 
-/* ── Skeleton ───────────────────────────────── */
-function StorySkeleton({ view }) {
-  return view === 'grid' ? (
-    <div className="card-flat overflow-hidden">
-      <div className="skeleton h-44" />
-      <div className="p-5 space-y-2">
-        <div className="skeleton h-4 w-3/4" />
-        <div className="skeleton h-3 w-full" />
-        <div className="skeleton h-3 w-2/3" />
-      </div>
-    </div>
-  ) : (
-    <div className="card-flat flex gap-4 p-4">
-      <div className="skeleton w-24 h-24 rounded-xl shrink-0" />
-      <div className="flex-1 space-y-2 py-1">
-        <div className="skeleton h-4 w-1/2" />
-        <div className="skeleton h-3 w-full" />
-        <div className="skeleton h-3 w-3/4" />
-      </div>
-    </div>
-  )
-}
-
-/* ── Main Page ──────────────────────────────── */
-export default function Explore() {
-  const [stories,  setStories]  = useState([])
-  const [loading,  setLoading]  = useState(true)
-  const [search,   setSearch]   = useState('')
-  const [category, setCategory] = useState('جميع التصنيفات')
-  const [sort,     setSort]     = useState('views')
-  const [view,     setView]     = useState('grid')
-  const [page,     setPage]     = useState(0)
-  const [hasMore,  setHasMore]  = useState(true)
-  const [showSort, setShowSort] = useState(false)
-  const [ratingsMap, setRatingsMap] = useState({})
-
-  const LIMIT = 12
-
-  const fetchStories = useCallback(async (reset = false) => {
-    setLoading(true)
-    const offset = reset ? 0 : page * LIMIT
-    const { data } = await storyHelpers.getPublished({
-      limit: LIMIT,
-      offset,
-      category: category !== 'جميع التصنيفات' ? category : null,
-      search:   search || null,
-      sort,
-    })
-    if (data) {
-      setStories(prev => reset ? data : [...prev, ...data])
-      setHasMore(data.length === LIMIT)
-      if (reset) setPage(0)
-      
-      // جلب التقييمات لكل القصص مرة واحدة
-      const ids = data.map(s => s.id)
-      const { data: ratings } = await supabase
-        .from('ratings')
-        .select('story_id, rating')
-        .in('story_id', ids)
-      
-      // حساب متوسط التقييم لكل قصة
-      const map = {}
-      if (ratings) {
-        ratings.forEach(r => {
-          if (!map[r.story_id]) {
-            map[r.story_id] = { sum: 0, count: 0 }
-          }
-          map[r.story_id].sum += r.rating
-          map[r.story_id].count += 1
-        })
-      }
-      
-      const avgMap = {}
-      Object.keys(map).forEach(id => {
-        avgMap[id] = map[id].sum / map[id].count
-      })
-      
-      setRatingsMap(prev => reset ? avgMap : { ...prev, ...avgMap })
-    }
-    setLoading(false)
-  }, [category, search, sort, page])
-
-  // Reset on filter change
-  useEffect(() => {
-    const t = setTimeout(() => fetchStories(true), 300)
-    return () => clearTimeout(t)
-  }, [category, search, sort])
-
-  const loadMore = () => {
-    setPage(p => p + 1)
-  }
-  useEffect(() => {
-    if (page > 0) fetchStories(false)
-  }, [page])
-
-  const currentSort = SORT_OPTIONS.find(s => s.value === sort)
-
-  return (
-    <div style={{ background: 'var(--bg-base)', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
-      <Navbar />
-
-      {/* Header */}
-      <div className="section" style={{ paddingBottom: '2rem', background: 'var(--bg-surface)', borderBottom: '1px solid var(--border-subtle)' }}>
-        <div className="page-container">
-          <motion.h1
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="text-4xl font-black mb-2"
-            style={{ color: 'var(--text-primary)' }}
-          >
-            مكتبة القصص
-          </motion.h1>
-          <p style={{ color: 'var(--text-muted)' }}>اكتشف عالمًا من القصص التفاعلية — كل قراءة تجربة جديدة</p>
-        </div>
+      {/* Results Count */}
+      <div className="mb-4 text-sm text-[var(--text-muted)]">
+        {!isLoading && stories && (
+          <>عرض {stories.length} قصة</>
+        )}
       </div>
 
-      <div className="page-container py-8">
-        {/* Controls */}
-        <div className="flex flex-col sm:flex-row gap-3 mb-8">
-          {/* Search */}
-          <div className="relative flex-1">
-            <RiSearchLine className="absolute right-4 top-1/2 -translate-y-1/2 text-base"
-              style={{ color: 'var(--text-muted)' }} />
-            <input
-              type="text"
-              placeholder="ابحث عن قصة..."
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              className="input-base pr-10"
-            />
-          </div>
-
-          {/* Sort dropdown */}
-          <div className="relative">
-            <button
-              onClick={() => setShowSort(s => !s)}
-              className="btn-secondary flex items-center gap-2 whitespace-nowrap"
-            >
-              <RiFilterLine />
-              {currentSort?.label}
-              <RiArrowDownLine className={`transition-transform ${showSort ? 'rotate-180' : ''}`} />
-            </button>
-            <AnimatePresence>
-              {showSort && (
-                <motion.div
-                  initial={{ opacity: 0, y: -8, scale: 0.96 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0, y: -8, scale: 0.96 }}
-                  transition={{ duration: 0.15 }}
-                  className="absolute left-0 top-full mt-1 z-20 py-1 rounded-xl overflow-hidden shadow-xl min-w-[140px]"
-                  style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-default)' }}
-                >
-                  {SORT_OPTIONS.map(opt => (
-                    <button
-                      key={opt.value}
-                      onClick={() => { setSort(opt.value); setShowSort(false) }}
-                      className="w-full text-right px-4 py-2 text-sm transition-colors hover:text-yellow-500"
-                      style={{
-                        background: sort === opt.value ? 'rgba(245,158,11,0.08)' : 'transparent',
-                        color: sort === opt.value ? '#f59e0b' : 'var(--text-secondary)',
-                      }}
-                    >
-                      {opt.label}
-                    </button>
-                  ))}
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-
-          {/* View toggle */}
-          <div className="flex rounded-xl overflow-hidden" style={{ border: '1px solid var(--border-default)' }}>
-            {[
-              { v: 'grid', icon: RiGridLine },
-              { v: 'list', icon: RiListCheck },
-            ].map(({ v, icon: Icon }) => (
-              <button
-                key={v}
-                onClick={() => setView(v)}
-                className="w-10 h-10 flex items-center justify-center transition-colors"
-                style={{
-                  background: view === v ? '#f59e0b15' : 'var(--bg-elevated)',
-                  color: view === v ? '#f59e0b' : 'var(--text-muted)',
-                }}
-              >
-                <Icon />
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Categories */}
-        <div className="flex gap-2 overflow-x-auto pb-2 mb-8 scrollbar-hide">
-          {CATEGORIES.map(cat => (
-            <button
-              key={cat}
-              onClick={() => setCategory(cat)}
-              className="px-4 py-2 rounded-xl text-sm font-semibold whitespace-nowrap transition-all duration-200 shrink-0"
-              style={{
-                background: category === cat ? '#f59e0b' : 'var(--bg-elevated)',
-                color: category === cat ? '#0f0d0a' : 'var(--text-secondary)',
-                border: `1px solid ${category === cat ? 'transparent' : 'var(--border-subtle)'}`,
-                boxShadow: category === cat ? '0 4px 12px rgba(245,158,11,0.35)' : 'none',
-              }}
-            >
-              {cat}
-            </button>
+      {/* Stories Grid */}
+      {isLoading ? (
+        <div className="space-y-4">
+          {[1, 2, 3, 4, 5].map(i => (
+            <div key={i} className="skeleton h-32 rounded-xl" />
           ))}
         </div>
-
-        {/* Stories grid/list */}
-        {loading && stories.length === 0 ? (
-          <div className={view === 'grid' ? 'grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5' : 'flex flex-col gap-4'}>
-            {[...Array(8)].map((_, i) => <StorySkeleton key={i} view={view} />)}
-          </div>
-        ) : stories.length === 0 ? (
-          <div className="text-center py-24">
-            <RiBookOpenLine style={{ fontSize: '4rem', color: 'var(--text-muted)', opacity: 0.3, margin: '0 auto 1rem' }} />
-            <p className="text-lg font-semibold mb-2" style={{ color: 'var(--text-secondary)' }}>لا توجد قصص</p>
-            <p className="text-sm" style={{ color: 'var(--text-muted)' }}>جرب بحثًا مختلفًا أو تصنيفًا آخر</p>
-          </div>
-        ) : (
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={`${view}-${category}-${search}`}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className={view === 'grid'
-                ? 'grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5'
-                : 'flex flex-col gap-4'
-              }
-            >
-              {stories.map((story) =>
-                view === 'grid'
-                  ? <StoryCardGrid key={story.id} story={story} avgRating={ratingsMap[story.id]} />
-                  : <StoryCardList key={story.id} story={story} avgRating={ratingsMap[story.id]} />
-              )}
-            </motion.div>
-          </AnimatePresence>
-        )}
-
-        {/* Load more */}
-        {hasMore && !loading && stories.length > 0 && (
-          <div className="text-center mt-10">
-            <button onClick={loadMore} className="btn-secondary px-10">
-              تحميل المزيد
-            </button>
-          </div>
-        )}
-        {loading && stories.length > 0 && (
-          <div className="text-center mt-8">
-            <div className="inline-flex items-center gap-2 text-sm" style={{ color: 'var(--text-muted)' }}>
-              <div className="w-4 h-4 rounded-full border-2 border-yellow-500 border-t-transparent animate-spin" />
-              تحميل...
-            </div>
-          </div>
-        )}
-      </div>
-  
-      <div style={{ flex: 1 }} />
-
-      <Footer />
+      ) : stories && stories.length > 0 ? (
+        <div className="space-y-4">
+          {stories.map((story, index) => (
+            <StoryCard key={story.id} story={story} index={index} />
+          ))}
+        </div>
+      ) : (
+        <div className="text-center py-12">
+          <p className="text-[var(--text-muted)] text-lg">لا توجد قصص تطابق بحثك</p>
+          <button
+            onClick={clearFilters}
+            className="text-gold-500 hover:underline mt-2"
+          >
+            إلغاء الفلاتر
+          </button>
+        </div>
+      )}
     </div>
   )
 }
+
+export default Explore
