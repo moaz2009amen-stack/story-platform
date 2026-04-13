@@ -1,692 +1,749 @@
-import { useState, useCallback, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useState, useEffect } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
+import { useAuth } from '../contexts/AuthContext'
+import { useStory, useCreateStory, useUpdateStory } from '../hooks/useStories'
+import { uploadCoverImage, uploadSceneImage } from '../lib/uploadImage'
+import { translateText, translateObject } from '../lib/translate'
+import { searchUnsplash } from '../lib/unsplashProxy'
 import { motion, AnimatePresence } from 'framer-motion'
-import {
-  RiBookOpenLine, RiPencilLine, RiImageLine, RiAddLine,
-  RiDeleteBinLine, RiArrowLeftLine, RiArrowRightLine,
-  RiEyeLine, RiFlagLine, RiPlayLine, RiCheckLine,
-  RiInformationLine, RiCloseLine, RiSearchLine,
-  RiUploadLine, RiGalleryLine,
-} from 'react-icons/ri'
-import Navbar from '../components/Navbar'
-import { storyHelpers, uploadImage } from '../lib/supabase'
+import toast from 'react-hot-toast'
+import { FiUpload, FiImage, FiPlus, FiTrash2, FiChevronRight, FiChevronLeft, FiCheck, FiGlobe, FiX, FiSearch } from 'react-icons/fi'
 
-const CATEGORIES = ['مغامرة', 'رعب', 'رومانسية', 'خيال علمي', 'تاريخية', 'جريمة', 'أخرى']
-const ENDING_TYPES = [
-  { value: 'good',    label: '😊 نهاية سعيدة', color: '#22c55e' },
-  { value: 'bad',     label: '😢 نهاية حزينة', color: '#ef4444' },
-  { value: 'neutral', label: '😐 نهاية محايدة', color: '#f59e0b' },
-]
+const categories = ['مغامرة', 'خيال', 'رومانسية', 'رعب', 'خيال علمي', 'دراما', 'كوميديا', 'تاريخي']
 
-// تم حذف مكتبة STOCK_IMAGES الثابتة لأنها لم تعد مستخدمة
-
-function genId() { return `scene_${Date.now()}_${Math.random().toString(36).slice(2, 7)}` }
-
-const DEFAULT_SCENE = () => ({
-  id: genId(),
-  title: { ar: '', en: '' },
-  content: { ar: '', en: '' },
-  image: '',
-  choices: [],
-  isEnd: false,
-  endType: 'neutral',
-  endMessage: { ar: '', en: '' },
-})
-
-/* ── Image Picker Modal (تم التعديل ليستخدم Unsplash API) ─────────────────────── */
-function ImagePicker({ current, onSelect, onClose }) {
-  const [tab, setTab] = useState('library')
+const CreateStory = () => {
+  const { id } = useParams()
+  const navigate = useNavigate()
+  const { user } = useAuth()
+  const { data: existingStory } = useStory(id)
+  const createStory = useCreateStory()
+  const updateStory = useUpdateStory()
+  
+  const [step, setStep] = useState(1)
+  const [storyType, setStoryType] = useState('normal')
+  const [title, setTitle] = useState({ ar: '', en: '' })
+  const [description, setDescription] = useState({ ar: '', en: '' })
+  const [category, setCategory] = useState('')
+  const [readingTime, setReadingTime] = useState(5)
+  const [coverImage, setCoverImage] = useState('')
+  const [scenes, setScenes] = useState([])
+  const [firstScene, setFirstScene] = useState('')
+  const [isDraft, setIsDraft] = useState(true)
+  const [loading, setLoading] = useState(false)
   const [uploading, setUploading] = useState(false)
-  const [searchQuery, setSearchQuery] = useState('')
-  const [images, setImages] = useState([])
-  const [searching, setSearching] = useState(false)
-  const [loaded, setLoaded] = useState(false)
+  const [translating, setTranslating] = useState(false)
+  const [unsplashQuery, setUnsplashQuery] = useState('')
+  const [unsplashImages, setUnsplashImages] = useState([])
+  const [showUnsplash, setShowUnsplash] = useState(false)
 
-  // تحميل صور أولية عند فتح النافذة
   useEffect(() => {
-    if (!loaded) loadImages('nature landscape')
-  }, [])
-
-  async function loadImages(query) {
-    setSearching(true)
-    try {
-      const res = await fetch(
-        `https://api.unsplash.com/search/photos?query=${encodeURIComponent(query)}&per_page=30&client_id=${import.meta.env.VITE_UNSPLASH_ACCESS_KEY}`
-      )
-      const data = await res.json()
-      setImages(data.results.map(img => ({
-        url: img.urls.small,
-        label: img.alt_description || query,
-      })))
-      setLoaded(true)
-    } catch (error) {
-      console.error("Error loading images from Unsplash:", error)
+    if (existingStory) {
+      setStoryType(existingStory.story_type || 'normal')
+      setTitle(existingStory.title || { ar: '', en: '' })
+      setDescription(existingStory.description || { ar: '', en: '' })
+      setCategory(existingStory.category || '')
+      setReadingTime(existingStory.reading_time || 5)
+      setCoverImage(existingStory.cover_image || '')
+      setScenes(existingStory.scenes || [])
+      setFirstScene(existingStory.first_scene || '')
+    } else {
+      // Add initial scene for new story
+      addScene()
     }
-    setSearching(false)
+  }, [existingStory])
+
+  const addScene = () => {
+    const newSceneId = `scene_${Date.now()}_${scenes.length}`
+    setScenes([...scenes, {
+      id: newSceneId,
+      title: { ar: '', en: '' },
+      content: { ar: '', en: '' },
+      image: '',
+      choices: storyType === 'interactive' ? [] : undefined,
+      isEnding: false,
+      endingType: 'neutral',
+      endingMessage: '',
+    }])
   }
 
-  function handleSearch(e) {
-    e.preventDefault()
-    if (searchQuery.trim()) loadImages(searchQuery)
+  const updateScene = (index, field, value) => {
+    const updated = [...scenes]
+    updated[index] = { ...updated[index], [field]: value }
+    setScenes(updated)
   }
 
-  async function handleUpload(e) {
-    const file = e.target.files?.[0]
+  const updateSceneText = (index, field, lang, value) => {
+    const updated = [...scenes]
+    updated[index] = {
+      ...updated[index],
+      [field]: { ...updated[index][field], [lang]: value }
+    }
+    setScenes(updated)
+  }
+
+  const addChoice = (sceneIndex) => {
+    const updated = [...scenes]
+    updated[sceneIndex].choices.push({
+      id: `choice_${Date.now()}_${updated[sceneIndex].choices.length}`,
+      text: { ar: '', en: '' },
+      nextScene: '',
+    })
+    setScenes(updated)
+  }
+
+  const updateChoice = (sceneIndex, choiceIndex, field, value) => {
+    const updated = [...scenes]
+    updated[sceneIndex].choices[choiceIndex][field] = value
+    setScenes(updated)
+  }
+
+  const removeChoice = (sceneIndex, choiceIndex) => {
+    const updated = [...scenes]
+    updated[sceneIndex].choices.splice(choiceIndex, 1)
+    setScenes(updated)
+  }
+
+  const removeScene = (index) => {
+    if (scenes.length <= 1) {
+      toast.error('يجب أن يكون هناك مشهد واحد على الأقل')
+      return
+    }
+    const updated = scenes.filter((_, i) => i !== index)
+    setScenes(updated)
+    if (firstScene === scenes[index].id) {
+      setFirstScene(updated[0]?.id || '')
+    }
+  }
+
+  const handleTranslateField = async (text, from, to, setter) => {
+    if (!text) return
+    setTranslating(true)
+    try {
+      const translated = await translateText(text, from, to)
+      setter(translated)
+    } catch (error) {
+      toast.error(error.message)
+    } finally {
+      setTranslating(false)
+    }
+  }
+
+  const handleTranslateTitle = () => {
+    if (title.ar && !title.en) {
+      handleTranslateField(title.ar, 'ar', 'en', (translated) => setTitle({ ...title, en: translated }))
+    } else if (title.en && !title.ar) {
+      handleTranslateField(title.en, 'en', 'ar', (translated) => setTitle({ ...title, ar: translated }))
+    }
+  }
+
+  const handleTranslateDescription = () => {
+    if (description.ar && !description.en) {
+      handleTranslateField(description.ar, 'ar', 'en', (translated) => setDescription({ ...description, en: translated }))
+    } else if (description.en && !description.ar) {
+      handleTranslateField(description.en, 'en', 'ar', (translated) => setDescription({ ...description, ar: translated }))
+    }
+  }
+
+  const handleUploadCover = async (e) => {
+    const file = e.target.files[0]
     if (!file) return
     setUploading(true)
     try {
-      const url = await uploadImage(file)
-      onSelect(url)
-      onClose()
-    } catch { alert('فشل رفع الصورة') }
-    setUploading(false)
+      const url = await uploadCoverImage(file)
+      setCoverImage(url)
+    } catch (error) {
+      toast.error(error.message)
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  const handleUploadSceneImage = async (index, file) => {
+    setUploading(true)
+    try {
+      const url = await uploadSceneImage(file)
+      updateScene(index, 'image', url)
+    } catch (error) {
+      toast.error(error.message)
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  const searchUnsplashImages = async () => {
+    if (!unsplashQuery) return
+    setUploading(true)
+    try {
+      const images = await searchUnsplash(unsplashQuery)
+      setUnsplashImages(images)
+    } catch (error) {
+      toast.error('فشل البحث عن الصور')
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  const selectUnsplashImage = (url) => {
+    if (showUnsplash === 'cover') {
+      setCoverImage(url)
+    } else if (typeof showUnsplash === 'number') {
+      updateScene(showUnsplash, 'image', url)
+    }
+    setShowUnsplash(false)
+    setUnsplashImages([])
+  }
+
+  const validateStory = () => {
+    if (!title.ar && !title.en) {
+      toast.error('يرجى إضافة عنوان للقصة')
+      return false
+    }
+    if (!category) {
+      toast.error('يرجى اختيار تصنيف للقصة')
+      return false
+    }
+    if (scenes.length === 0) {
+      toast.error('يرجى إضافة مشهد واحد على الأقل')
+      return false
+    }
+    if (!firstScene) {
+      toast.error('يرجى تحديد مشهد البداية')
+      return false
+    }
+    
+    for (const scene of scenes) {
+      if (!scene.title.ar && !scene.title.en) {
+        toast.error('يرجى إضافة عنوان لجميع المشاهد')
+        return false
+      }
+      if (!scene.content.ar && !scene.content.en) {
+        toast.error('يرجى إضافة محتوى لجميع المشاهد')
+        return false
+      }
+    }
+
+    if (storyType === 'interactive') {
+      for (const scene of scenes) {
+        if (!scene.isEnding && scene.choices && scene.choices.length === 0) {
+          toast.error(`المشهد "${scene.title.ar || scene.title.en}" يجب أن يحتوي على اختيارات أو يكون مشهد نهاية`)
+          return false
+        }
+      }
+    }
+
+    return true
+  }
+
+  const handleSave = async (publish = false) => {
+    if (!validateStory()) return
+
+    setLoading(true)
+    try {
+      const storyData = {
+        title,
+        description,
+        category,
+        reading_time: readingTime,
+        cover_image: coverImage,
+        story_type: storyType,
+        scenes,
+        first_scene: firstScene,
+        is_published: publish,
+        is_draft: !publish,
+        author_id: user.id,
+      }
+
+      if (id) {
+        await updateStory.mutateAsync({ id, updates: storyData })
+      } else {
+        await createStory.mutateAsync(storyData)
+      }
+      
+      navigate('/profile?tab=stories')
+    } catch (error) {
+      toast.error(error.message)
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)' }}>
-      <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
-        className="w-full max-w-2xl rounded-2xl overflow-hidden"
-        style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-default)' }}>
-
-        {/* Header */}
-        <div className="flex items-center justify-between p-5 border-b" style={{ borderColor: 'var(--border-subtle)' }}>
-          <h3 className="font-bold text-base" style={{ color: 'var(--text-primary)' }}>اختر صورة</h3>
-          <button onClick={onClose} className="btn-ghost w-8 h-8 p-0 rounded-lg">
-            <RiCloseLine style={{ color: 'var(--text-muted)' }} />
-          </button>
-        </div>
-
-        {/* Tabs */}
-        <div className="flex border-b" style={{ borderColor: 'var(--border-subtle)' }}>
-          {[
-            { id: 'library', label: 'مكتبة الصور', icon: RiGalleryLine },
-            { id: 'upload',  label: 'رفع صورة',    icon: RiUploadLine },
-          ].map(t => (
-            <button key={t.id} onClick={() => setTab(t.id)}
-              className="flex-1 flex items-center justify-center gap-2 py-3 text-sm font-semibold transition-all"
-              style={{
-                borderBottom: tab === t.id ? '2px solid #f59e0b' : '2px solid transparent',
-                color: tab === t.id ? '#f59e0b' : 'var(--text-muted)',
-              }}>
-              <t.icon /> {t.label}
-            </button>
+    <div className="page-container max-w-4xl">
+      <div className="mb-8">
+        <h1 className="text-3xl font-bold mb-2">{id ? 'تعديل القصة' : 'إنشاء قصة جديدة'}</h1>
+        <p className="text-[var(--text-muted)]">الخطوة {step} من 3</p>
+        <div className="flex gap-2 mt-4">
+          {[1, 2, 3].map(i => (
+            <div
+              key={i}
+              className={`flex-1 h-2 rounded-full transition-all ${
+                step >= i ? 'bg-gold-500' : 'bg-[var(--bg-surface)]'
+              }`}
+            />
           ))}
         </div>
-
-        <div className="p-5">
-          {tab === 'library' && (
-            <>
-              {/* حقل البحث - ملاحظة: البحث يجب أن يكون بالإنجليزية لنتائج أفضل من Unsplash */}
-              <form onSubmit={handleSearch} className="flex gap-2 mb-4">
-                <div className="relative flex-1">
-                  <RiSearchLine className="absolute right-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-muted)' }} />
-                  <input
-                    type="text"
-                    placeholder="ابحث بالإنجليزي — forest, castle, ocean..."
-                    value={searchQuery}
-                    onChange={e => setSearchQuery(e.target.value)}
-                    className="input-base pr-9 text-sm"
-                    dir="ltr"
-                  />
-                </div>
-                <button type="submit" className="btn-primary px-4 text-sm shrink-0">بحث</button>
-              </form>
-
-              {/* شبكة عرض الصور */}
-              {searching ? (
-                <div className="flex items-center justify-center py-16">
-                  <div className="w-8 h-8 border-2 border-yellow-500 border-t-transparent rounded-full animate-spin" />
-                </div>
-              ) : (
-                <div className="grid grid-cols-4 sm:grid-cols-6 gap-2 max-h-72 overflow-y-auto">
-                  {images.map(img => (
-                    <button key={img.url} onClick={() => { onSelect(img.url); onClose() }}
-                      className="relative rounded-xl overflow-hidden aspect-square group transition-all hover:scale-105"
-                      style={{ border: current === img.url ? '2px solid #f59e0b' : '2px solid transparent' }}>
-                      <img src={img.url} alt={img.label} className="w-full h-full object-cover" loading="lazy" />
-                      <div className="absolute inset-0 flex items-end p-1 opacity-0 group-hover:opacity-100 transition-opacity"
-                        style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.6), transparent)' }}>
-                        <span className="text-white text-[10px] font-bold truncate">{img.label}</span>
-                      </div>
-                      {current === img.url && (
-                        <div className="absolute top-1 left-1 w-5 h-5 rounded-full flex items-center justify-center"
-                          style={{ background: '#f59e0b' }}>
-                          <RiCheckLine className="text-black text-xs" />
-                        </div>
-                      )}
-                    </button>
-                  ))}
-                </div>
-              )}
-              <p className="text-xs mt-3 text-center" style={{ color: 'var(--text-muted)' }}>
-                الصور من Unsplash — ابحث بالإنجليزي للحصول على نتائج أفضل
-              </p>
-            </>
-          )}
-
-          {tab === 'upload' && (
-            <div className="text-center py-10">
-              <RiUploadLine style={{ fontSize: '3rem', color: 'var(--text-muted)', opacity: 0.4, margin: '0 auto 1rem' }} />
-              <p className="text-sm mb-4" style={{ color: 'var(--text-muted)' }}>JPG, PNG, WebP — حتى 10MB</p>
-              <label className="btn-primary cursor-pointer inline-flex">
-                {uploading
-                  ? <><span className="w-4 h-4 border-2 border-black/30 border-t-black rounded-full animate-spin" /> جاري الرفع...</>
-                  : <><RiUploadLine /> اختر صورة من جهازك</>
-                }
-                <input type="file" accept="image/*" className="hidden" onChange={handleUpload} />
-              </label>
-              {current && (
-                <div className="mt-4">
-                  <img src={current} alt="" className="w-32 h-32 rounded-xl object-cover mx-auto mb-2" />
-                  <button onClick={() => { onSelect(''); onClose() }} className="text-xs" style={{ color: '#ef4444' }}>إزالة الصورة</button>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      </motion.div>
-    </div>
-  )
-}
-
-/* ── Step Bar ───────────────────────────────── */
-function StepBar({ current }) {
-  const steps = ['معلومات القصة', 'المشاهد', 'المراجعة والنشر']
-  return (
-    <div className="flex items-center gap-3 mb-10">
-      {steps.map((s, i) => (
-        <div key={i} className="flex items-center gap-2 flex-1">
-          <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold shrink-0 transition-all`}
-            style={i === current ? { background: 'linear-gradient(135deg,#f59e0b,#d97706)', color: '#000' }
-              : i < current ? { background: '#22c55e', color: '#fff' }
-              : { background: 'var(--bg-subtle)', color: 'var(--text-muted)' }}>
-            {i < current ? <RiCheckLine /> : i + 1}
-          </div>
-          <span className="text-xs font-semibold hidden sm:block"
-            style={{ color: i === current ? 'var(--text-primary)' : 'var(--text-muted)' }}>{s}</span>
-          {i < steps.length - 1 && <div className="flex-1 h-px mx-2 hidden sm:block" style={{ background: 'var(--border-default)' }} />}
-        </div>
-      ))}
-    </div>
-  )
-}
-
-/* ── Scene Editor ───────────────────────────── */
-function SceneEditor({ scene, allScenes, onChange, onDelete, isFirst, onSetFirst, storyType }) {
-  const [showPicker, setShowPicker] = useState(false)
-
-  const updateField = (path, value) => {
-    const [a, b] = path.split('.')
-    onChange(b ? { ...scene, [a]: { ...scene[a], [b]: value } } : { ...scene, [a]: value })
-  }
-  const addChoice = () => onChange({ ...scene, choices: [...scene.choices, { id: genId(), text: { ar: '', en: '' }, targetScene: '' }] })
-  const removeChoice = (cid) => onChange({ ...scene, choices: scene.choices.filter(c => c.id !== cid) })
-  const updateChoice = (cid, patch) => onChange({ ...scene, choices: scene.choices.map(c => c.id === cid ? { ...c, ...patch } : c) })
-
-  return (
-    <div className="card-flat p-6 space-y-5">
-      {showPicker && (
-        <ImagePicker current={scene.image} onSelect={url => onChange({ ...scene, image: url })} onClose={() => setShowPicker(false)} />
-      )}
-
-      {/* باقي محتوى SceneEditor كما هو دون تغيير... */}
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold"
-            style={{ background: 'rgba(245,158,11,0.15)', color: '#f59e0b' }}>
-            {allScenes.findIndex(s => s.id === scene.id) + 1}
-          </div>
-          <span className="font-bold text-sm" style={{ color: 'var(--text-primary)' }}>
-            {scene.title?.ar || `مشهد ${allScenes.findIndex(s => s.id === scene.id) + 1}`}
-          </span>
-          {isFirst && <span className="badge badge-gold text-xs"><RiPlayLine /> بداية</span>}
-          {scene.isEnd && <span className="badge badge-crimson text-xs"><RiFlagLine /> نهاية</span>}
-        </div>
-        <div className="flex items-center gap-2">
-          {!isFirst && (
-            <button onClick={() => onSetFirst(scene.id)} className="btn-ghost text-xs px-2 py-1 rounded-lg" title="تعيين كبداية">
-              <RiPlayLine />
-            </button>
-          )}
-          <button onClick={onDelete} className="btn-danger text-xs px-2 py-1 rounded-lg">
-            <RiDeleteBinLine />
-          </button>
-        </div>
       </div>
 
-      {/* Scene Image */}
-      <div>
-        <label className="text-xs font-semibold mb-2 block" style={{ color: 'var(--text-secondary)' }}>صورة المشهد</label>
-        <div className="flex gap-3 items-center">
-          <div className="w-24 h-24 rounded-xl overflow-hidden shrink-0 flex items-center justify-center"
-            style={{ background: 'var(--bg-subtle)', border: '2px dashed var(--border-default)' }}>
-            {scene.image
-              ? <img src={scene.image} alt="" className="w-full h-full object-cover" />
-              : <RiImageLine style={{ fontSize: '1.5rem', color: 'var(--text-muted)', opacity: 0.4 }} />
-            }
-          </div>
-          <div className="flex flex-col gap-2">
-            <button onClick={() => setShowPicker(true)} className="btn-secondary text-xs px-3 py-2 flex items-center gap-1">
-              <RiGalleryLine /> اختر صورة
-            </button>
-            {scene.image && (
-              <button onClick={() => onChange({ ...scene, image: '' })} className="text-xs" style={{ color: '#ef4444' }}>إزالة</button>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Title */}
-      <div className="grid sm:grid-cols-2 gap-3">
-        <div>
-          <label className="text-xs font-semibold mb-1 block" style={{ color: 'var(--text-secondary)' }}>عنوان المشهد (عربي)</label>
-          <input type="text" className="input-base text-sm" placeholder="عنوان المشهد..."
-            value={scene.title?.ar || ''} onChange={e => updateField('title.ar', e.target.value)} />
-        </div>
-        <div>
-          <label className="text-xs font-semibold mb-1 block" style={{ color: 'var(--text-secondary)' }} dir="ltr">Scene Title (English)</label>
-          <input type="text" className="input-base text-sm" dir="ltr" placeholder="Scene title..."
-            value={scene.title?.en || ''} onChange={e => updateField('title.en', e.target.value)} />
-        </div>
-      </div>
-
-      {/* Content */}
-      <div className="grid sm:grid-cols-2 gap-3">
-        <div>
-          <label className="text-xs font-semibold mb-1 block" style={{ color: 'var(--text-secondary)' }}>محتوى المشهد (عربي) *</label>
-          <textarea rows={4} className="input-base text-sm resize-none" placeholder="اكتب نص المشهد..."
-            value={scene.content?.ar || ''} onChange={e => updateField('content.ar', e.target.value)} />
-        </div>
-        <div>
-          <label className="text-xs font-semibold mb-1 block" style={{ color: 'var(--text-secondary)' }} dir="ltr">Scene Content (English)</label>
-          <textarea rows={4} className="input-base text-sm resize-none" dir="ltr" placeholder="Scene content..."
-            value={scene.content?.en || ''} onChange={e => updateField('content.en', e.target.value)} />
-        </div>
-      </div>
-
-      {/* Is ending */}
-      {storyType === 'interactive' && (
-        <div className="flex items-center gap-3 p-3 rounded-xl" style={{ background: 'var(--bg-subtle)' }}>
-          <input type="checkbox" id={`end-${scene.id}`} checked={scene.isEnd}
-            onChange={e => onChange({ ...scene, isEnd: e.target.checked })} className="w-4 h-4 accent-yellow-500" />
-          <label htmlFor={`end-${scene.id}`} className="text-sm font-semibold cursor-pointer"
-            style={{ color: 'var(--text-secondary)' }}>هذا مشهد نهاية 🏁</label>
-        </div>
-      )}
-
-      {storyType === 'interactive' && scene.isEnd && (
-        <div className="grid sm:grid-cols-3 gap-3 p-4 rounded-xl" style={{ border: '1px dashed var(--border-default)' }}>
-          <div className="sm:col-span-3">
-            <label className="text-xs font-semibold mb-2 block" style={{ color: 'var(--text-secondary)' }}>نوع النهاية</label>
-            <div className="flex gap-2 flex-wrap">
-              {ENDING_TYPES.map(et => (
-                <button key={et.value} type="button" onClick={() => onChange({ ...scene, endType: et.value })}
-                  className="px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all"
-                  style={{
-                    background: scene.endType === et.value ? `${et.color}15` : 'transparent',
-                    borderColor: scene.endType === et.value ? et.color : 'var(--border-default)',
-                    color: scene.endType === et.value ? et.color : 'var(--text-muted)',
-                  }}>
-                  {et.label}
+      <AnimatePresence mode="wait">
+        {/* Step 1: Basic Info */}
+        {step === 1 && (
+          <motion.div
+            key="step1"
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+            className="space-y-6"
+          >
+            {/* Story Type */}
+            <div>
+              <label className="block font-semibold mb-2">نوع القصة</label>
+              <div className="grid grid-cols-2 gap-4">
+                <button
+                  type="button"
+                  onClick={() => setStoryType('normal')}
+                  className={`p-4 rounded-xl border-2 transition-all ${
+                    storyType === 'normal'
+                      ? 'border-gold-500 bg-gold-50 dark:bg-gold-900/20'
+                      : 'border-[var(--border-light)]'
+                  }`}
+                >
+                  <div className="text-2xl mb-2">📖</div>
+                  <div className="font-bold">قصة عادية</div>
+                  <div className="text-xs text-[var(--text-muted)]">تقرأ من البداية للنهاية</div>
                 </button>
-              ))}
-            </div>
-          </div>
-          <div>
-            <label className="text-xs font-semibold mb-1 block" style={{ color: 'var(--text-secondary)' }}>رسالة النهاية (عربي)</label>
-            <input type="text" className="input-base text-sm" placeholder="رسالة النهاية..."
-              value={scene.endMessage?.ar || ''} onChange={e => updateField('endMessage.ar', e.target.value)} />
-          </div>
-          <div className="sm:col-span-2">
-            <label className="text-xs font-semibold mb-1 block" style={{ color: 'var(--text-secondary)' }} dir="ltr">End Message (English)</label>
-            <input type="text" className="input-base text-sm" dir="ltr" placeholder="End message..."
-              value={scene.endMessage?.en || ''} onChange={e => updateField('endMessage.en', e.target.value)} />
-          </div>
-        </div>
-      )}
-
-      {/* Choices — للقصص التفاعلية فقط */}
-      {storyType === 'interactive' && !scene.isEnd && (
-        <div>
-          <div className="flex items-center justify-between mb-3">
-            <label className="text-xs font-semibold" style={{ color: 'var(--text-secondary)' }}>الاختيارات ({scene.choices.length}/4)</label>
-            {scene.choices.length < 4 && (
-              <button type="button" onClick={addChoice}
-                className="btn-ghost text-xs px-2 py-1 rounded-lg flex items-center gap-1" style={{ color: '#f59e0b' }}>
-                <RiAddLine /> إضافة اختيار
-              </button>
-            )}
-          </div>
-          <div className="space-y-3">
-            {scene.choices.map((choice, ci) => (
-              <div key={choice.id} className="flex gap-2 items-start p-3 rounded-xl"
-                style={{ background: 'var(--bg-subtle)', border: '1px solid var(--border-subtle)' }}>
-                <span className="w-6 h-6 rounded-lg flex items-center justify-center text-xs font-bold shrink-0 mt-2"
-                  style={{ background: 'rgba(245,158,11,0.15)', color: '#f59e0b' }}>{ci + 1}</span>
-                <div className="flex-1 grid sm:grid-cols-2 gap-2">
-                  <input type="text" className="input-base text-xs py-2" placeholder="نص الاختيار بالعربية"
-                    value={choice.text?.ar || ''}
-                    onChange={e => updateChoice(choice.id, { text: { ...choice.text, ar: e.target.value } })} />
-                  <input type="text" className="input-base text-xs py-2" dir="ltr" placeholder="Choice text in English"
-                    value={choice.text?.en || ''}
-                    onChange={e => updateChoice(choice.id, { text: { ...choice.text, en: e.target.value } })} />
-                  <select className="input-base text-xs py-2 sm:col-span-2"
-                    value={choice.targetScene}
-                    onChange={e => updateChoice(choice.id, { targetScene: e.target.value })}>
-                    <option value="">-- اختر المشهد التالي --</option>
-                    {allScenes.filter(s => s.id !== scene.id).map(s => (
-                      <option key={s.id} value={s.id}>
-                        {s.title?.ar || `مشهد ${allScenes.findIndex(x => x.id === s.id) + 1}`}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <button onClick={() => removeChoice(choice.id)} className="btn-danger p-1.5 rounded-lg mt-1 shrink-0">
-                  <RiCloseLine />
+                <button
+                  type="button"
+                  onClick={() => setStoryType('interactive')}
+                  className={`p-4 rounded-xl border-2 transition-all ${
+                    storyType === 'interactive'
+                      ? 'border-gold-500 bg-gold-50 dark:bg-gold-900/20'
+                      : 'border-[var(--border-light)]'
+                  }`}
+                >
+                  <div className="text-2xl mb-2">🔀</div>
+                  <div className="font-bold">قصة تفاعلية</div>
+                  <div className="text-xs text-[var(--text-muted)]">القراء يختارون مسار القصة</div>
                 </button>
               </div>
-            ))}
-            {scene.choices.length === 0 && (
-              <p className="text-xs text-center py-3" style={{ color: 'var(--text-muted)' }}>
-                أضف اختياراً واحداً على الأقل
-              </p>
-            )}
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
-
-/* ── Main Page ──────────────────────────────── */
-export default function CreateStory() {
-  const navigate = useNavigate()
-  const [step,    setStep]    = useState(0)
-  const [saving,  setSaving]  = useState(false)
-  const [error,   setError]   = useState('')
-  const [uploading, setUploading] = useState(false)
-  const [showCoverPicker, setShowCoverPicker] = useState(false)
-
-  const [info, setInfo] = useState({
-    title_ar: '', title_en: '',
-    desc_ar: '', desc_en: '',
-    cover: '',
-    category: 'مغامرة',
-    readingTime: 5,
-    storyType: 'interactive', // 'interactive' | 'normal'
-  })
-
-  const firstScene = DEFAULT_SCENE()
-  const [scenes,       setScenes]       = useState([firstScene])
-  const [firstSceneId, setFirstSceneId] = useState(firstScene.id)
-  const [activeSid,    setActiveSid]    = useState(firstScene.id)
-
-  function addScene() {
-    const s = DEFAULT_SCENE()
-    setScenes(prev => [...prev, s])
-    setActiveSid(s.id)
-  }
-
-  function updateScene(id, updated) {
-    setScenes(prev => prev.map(s => s.id === id ? updated : s))
-  }
-
-  function deleteScene(id) {
-    if (scenes.length === 1) return
-    const idx = scenes.findIndex(s => s.id === id)
-    setScenes(prev => prev.filter(s => s.id !== id))
-    if (firstSceneId === id) setFirstSceneId(scenes.find(s => s.id !== id)?.id || '')
-    setActiveSid(scenes[idx > 0 ? idx - 1 : 1]?.id || scenes[0]?.id)
-  }
-
-  async function publish(isPublished) {
-    setError('')
-    setSaving(true)
-    const scenesMap = {}
-    scenes.forEach(s => { scenesMap[s.id] = s })
-    const storyData = {
-      title:        { ar: info.title_ar, en: info.title_en },
-      description:  { ar: info.desc_ar,  en: info.desc_en },
-      cover_image:  info.cover,
-      category:     info.category,
-      reading_time: info.readingTime,
-      scenes:       scenesMap,
-      first_scene:  firstSceneId,
-      is_published: isPublished,
-      story_type:   info.storyType,
-    }
-    const { data, error } = await storyHelpers.create(storyData)
-    if (error) { setError(error.message || 'حدث خطأ أثناء الحفظ'); setSaving(false); return }
-    navigate(`/story/${data.id}`)
-  }
-
-  const step1Valid = info.title_ar.trim().length > 2
-  const step2Valid = scenes.length > 0 && scenes.some(s => s.content?.ar?.trim())
-  const activeScene = scenes.find(s => s.id === activeSid)
-
-  return (
-    <div style={{ background: 'var(--bg-base)', minHeight: '100vh' }}>
-      <Navbar />
-
-      {showCoverPicker && (
-        <ImagePicker
-          current={info.cover}
-          onSelect={url => setInfo(i => ({ ...i, cover: url }))}
-          onClose={() => setShowCoverPicker(false)}
-        />
-      )}
-
-      <div className="page-container py-10">
-        <div className="max-w-4xl mx-auto">
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
-            <h1 className="text-3xl font-black mb-2" style={{ color: 'var(--text-primary)' }}>إنشاء قصة جديدة</h1>
-            <p className="mb-8" style={{ color: 'var(--text-muted)' }}>ابنِ عالمك، أضف مشاهدك، وانشر قصتك للعالم</p>
-          </motion.div>
-
-          <StepBar current={step} />
-
-          {error && (
-            <div className="p-4 rounded-xl mb-6 text-sm flex items-center gap-2"
-              style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', color: '#ef4444' }}>
-              <RiInformationLine /> {error}
             </div>
-          )}
 
-          <AnimatePresence mode="wait">
+            {/* Title */}
+            <div>
+              <label className="block font-semibold mb-2">العنوان</label>
+              <div className="space-y-2">
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={title.ar}
+                    onChange={(e) => setTitle({ ...title, ar: e.target.value })}
+                    className="input-base flex-1"
+                    placeholder="العنوان بالعربية"
+                  />
+                  <input
+                    type="text"
+                    value={title.en}
+                    onChange={(e) => setTitle({ ...title, en: e.target.value })}
+                    className="input-base flex-1"
+                    placeholder="Title in English"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleTranslateTitle}
+                    disabled={translating || (!title.ar && !title.en)}
+                    className="px-4 bg-gold-500 text-white rounded-lg hover:bg-gold-600 disabled:opacity-50"
+                  >
+                    <FiGlobe />
+                  </button>
+                </div>
+              </div>
+            </div>
 
-            {/* Step 0: Basic Info */}
-            {step === 0 && (
-              <motion.div key="step0" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-6">
+            {/* Description */}
+            <div>
+              <label className="block font-semibold mb-2">الوصف</label>
+              <div className="space-y-2">
+                <textarea
+                  value={description.ar}
+                  onChange={(e) => setDescription({ ...description, ar: e.target.value })}
+                  className="input-base"
+                  rows="3"
+                  placeholder="وصف القصة بالعربية"
+                />
+                <textarea
+                  value={description.en}
+                  onChange={(e) => setDescription({ ...description, en: e.target.value })}
+                  className="input-base"
+                  rows="3"
+                  placeholder="Story description in English"
+                />
+                <button
+                  type="button"
+                  onClick={handleTranslateDescription}
+                  disabled={translating || (!description.ar && !description.en)}
+                  className="px-4 py-2 bg-gold-500 text-white rounded-lg hover:bg-gold-600 disabled:opacity-50 flex items-center gap-2"
+                >
+                  <FiGlobe />
+                  {translating ? 'جاري الترجمة...' : 'ترجمة'}
+                </button>
+              </div>
+            </div>
 
-                {/* نوع القصة */}
-                <div className="card-flat p-6">
-                  <h2 className="font-bold text-lg mb-4" style={{ color: 'var(--text-primary)' }}>نوع القصة</h2>
-                  <div className="grid sm:grid-cols-2 gap-4">
-                    {[
-                      { value: 'interactive', icon: '🔀', title: 'قصة تفاعلية', desc: 'مشاهد متعددة واختيارات تقود لنهايات مختلفة' },
-                      { value: 'normal',      icon: '📖', title: 'قصة عادية',   desc: 'قصة تُقرأ من البداية للنهاية بدون تفرعات' },
-                    ].map(type => (
-                      <button key={type.value} onClick={() => setInfo(i => ({ ...i, storyType: type.value }))}
-                        className="p-5 rounded-2xl text-right transition-all"
-                        style={{
-                          background: info.storyType === type.value ? 'rgba(245,158,11,0.08)' : 'var(--bg-subtle)',
-                          border: `2px solid ${info.storyType === type.value ? '#f59e0b' : 'var(--border-subtle)'}`,
-                        }}>
-                        <div className="text-3xl mb-2">{type.icon}</div>
-                        <p className="font-bold text-sm mb-1" style={{ color: 'var(--text-primary)' }}>{type.title}</p>
-                        <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{type.desc}</p>
-                      </button>
-                    ))}
+            {/* Category & Reading Time */}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block font-semibold mb-2">التصنيف</label>
+                <select value={category} onChange={(e) => setCategory(e.target.value)} className="input-base">
+                  <option value="">اختر تصنيفاً</option>
+                  {categories.map(cat => (
+                    <option key={cat} value={cat}>{cat}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block font-semibold mb-2">وقت القراءة (دقائق)</label>
+                <input
+                  type="number"
+                  min="1"
+                  max="120"
+                  value={readingTime}
+                  onChange={(e) => setReadingTime(parseInt(e.target.value))}
+                  className="input-base"
+                />
+              </div>
+            </div>
+
+            {/* Cover Image */}
+            <div>
+              <label className="block font-semibold mb-2">صورة الغلاف</label>
+              <div className="flex gap-4 items-start">
+                {coverImage && (
+                  <img src={coverImage} alt="Cover" className="w-32 h-32 object-cover rounded-lg" />
+                )}
+                <div className="flex-1 space-y-2">
+                  <label className="btn-secondary inline-flex items-center gap-2 cursor-pointer">
+                    <FiUpload />
+                    رفع من الجهاز
+                    <input type="file" accept="image/*" onChange={handleUploadCover} className="hidden" />
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => { setShowUnsplash('cover'); searchUnsplashImages() }}
+                    className="btn-secondary inline-flex items-center gap-2 mr-2"
+                  >
+                    <FiImage />
+                    اختيار من Unsplash
+                  </button>
+                  {uploading && <p className="text-sm text-[var(--text-muted)]">جاري الرفع...</p>}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-end">
+              <button onClick={() => setStep(2)} className="btn-primary flex items-center gap-2">
+                التالي
+                <FiChevronLeft />
+              </button>
+            </div>
+          </motion.div>
+        )}
+
+        {/* Step 2: Scenes */}
+        {step === 2 && (
+          <motion.div
+            key="step2"
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+            className="space-y-6"
+          >
+            <div className="flex justify-between items-center">
+              <h2 className="text-xl font-bold">المشاهد</h2>
+              <button onClick={addScene} className="btn-primary text-sm py-2 flex items-center gap-2">
+                <FiPlus />
+                إضافة مشهد
+              </button>
+            </div>
+
+            {scenes.map((scene, index) => (
+              <div key={scene.id} className="card p-4 space-y-4">
+                <div className="flex justify-between items-center">
+                  <h3 className="font-bold">المشهد {index + 1}</h3>
+                  <button onClick={() => removeScene(index)} className="text-red-500 hover:text-red-600">
+                    <FiTrash2 />
+                  </button>
+                </div>
+
+                {/* Scene Title */}
+                <div className="grid grid-cols-2 gap-2">
+                  <input
+                    type="text"
+                    value={scene.title.ar}
+                    onChange={(e) => updateSceneText(index, 'title', 'ar', e.target.value)}
+                    className="input-base text-sm"
+                    placeholder="عنوان المشهد (عربي)"
+                  />
+                  <input
+                    type="text"
+                    value={scene.title.en}
+                    onChange={(e) => updateSceneText(index, 'title', 'en', e.target.value)}
+                    className="input-base text-sm"
+                    placeholder="Scene title (English)"
+                  />
+                </div>
+
+                {/* Scene Content */}
+                <div className="space-y-2">
+                  <textarea
+                    value={scene.content.ar}
+                    onChange={(e) => updateSceneText(index, 'content', 'ar', e.target.value)}
+                    className="input-base text-sm"
+                    rows="3"
+                    placeholder="محتوى المشهد (عربي)"
+                  />
+                  <textarea
+                    value={scene.content.en}
+                    onChange={(e) => updateSceneText(index, 'content', 'en', e.target.value)}
+                    className="input-base text-sm"
+                    rows="3"
+                    placeholder="Scene content (English)"
+                  />
+                </div>
+
+                {/* Scene Image */}
+                <div>
+                  <label className="block text-sm font-semibold mb-1">صورة المشهد</label>
+                  <div className="flex gap-2">
+                    {scene.image && (
+                      <img src={scene.image} alt="Scene" className="w-16 h-16 object-cover rounded" />
+                    )}
+                    <label className="btn-secondary text-xs py-1 cursor-pointer">
+                      رفع صورة
+                      <input type="file" accept="image/*" onChange={(e) => handleUploadSceneImage(index, e.target.files[0])} className="hidden" />
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => { setShowUnsplash(index); setUnsplashQuery(scene.title.ar || 'story'); searchUnsplashImages() }}
+                      className="btn-secondary text-xs py-1"
+                    >
+                      Unsplash
+                    </button>
                   </div>
                 </div>
 
-                {/* Basic info */}
-                <div className="card-flat p-6">
-                  <h2 className="font-bold text-lg mb-5" style={{ color: 'var(--text-primary)' }}>معلومات القصة</h2>
-                  <div className="grid sm:grid-cols-2 gap-4">
-                    <div>
-                      <label className="text-xs font-semibold mb-1 block" style={{ color: 'var(--text-secondary)' }}>عنوان القصة (عربي) *</label>
-                      <input type="text" className="input-base" placeholder="عنوان رائع..."
-                        value={info.title_ar} onChange={e => setInfo(i => ({ ...i, title_ar: e.target.value }))} />
-                    </div>
-                    <div>
-                      <label className="text-xs font-semibold mb-1 block" style={{ color: 'var(--text-secondary)' }} dir="ltr">Story Title (English)</label>
-                      <input type="text" className="input-base" dir="ltr" placeholder="Amazing title..."
-                        value={info.title_en} onChange={e => setInfo(i => ({ ...i, title_en: e.target.value }))} />
-                    </div>
-                    <div className="sm:col-span-2">
-                      <label className="text-xs font-semibold mb-1 block" style={{ color: 'var(--text-secondary)' }}>وصف القصة (عربي)</label>
-                      <textarea rows={3} className="input-base resize-none" placeholder="وصف مثير..."
-                        value={info.desc_ar} onChange={e => setInfo(i => ({ ...i, desc_ar: e.target.value }))} />
-                    </div>
-                    <div className="sm:col-span-2">
-                      <label className="text-xs font-semibold mb-1 block" style={{ color: 'var(--text-secondary)' }} dir="ltr">Story Description (English)</label>
-                      <textarea rows={3} className="input-base resize-none" dir="ltr" placeholder="Exciting description..."
-                        value={info.desc_en} onChange={e => setInfo(i => ({ ...i, desc_en: e.target.value }))} />
-                    </div>
-                    <div>
-                      <label className="text-xs font-semibold mb-1 block" style={{ color: 'var(--text-secondary)' }}>التصنيف</label>
-                      <select className="input-base" value={info.category} onChange={e => setInfo(i => ({ ...i, category: e.target.value }))}>
-                        {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="text-xs font-semibold mb-1 block" style={{ color: 'var(--text-secondary)' }}>وقت القراءة (دقائق)</label>
-                      <input type="number" min={1} max={120} className="input-base"
-                        value={info.readingTime} onChange={e => setInfo(i => ({ ...i, readingTime: +e.target.value }))} />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Cover */}
-                <div className="card-flat p-6">
-                  <h2 className="font-bold text-lg mb-5" style={{ color: 'var(--text-primary)' }}>صورة الغلاف</h2>
-                  <div className="flex gap-5 items-start flex-wrap">
-                    <div className="w-40 h-40 rounded-2xl overflow-hidden shrink-0 flex items-center justify-center"
-                      style={{ background: 'var(--bg-subtle)', border: '2px dashed var(--border-default)' }}>
-                      {info.cover
-                        ? <img src={info.cover} alt="cover" className="w-full h-full object-cover" />
-                        : <RiImageLine style={{ fontSize: '2.5rem', color: 'var(--text-muted)', opacity: 0.4 }} />
-                      }
-                    </div>
-                    <div className="flex flex-col gap-3">
-                      <button onClick={() => setShowCoverPicker(true)} className="btn-primary inline-flex">
-                        <RiGalleryLine /> اختر صورة الغلاف
-                      </button>
-                      {info.cover && (
-                        <button onClick={() => setInfo(i => ({ ...i, cover: '' }))}
-                          className="text-xs" style={{ color: '#ef4444' }}>إزالة الصورة</button>
-                      )}
-                      <p className="text-xs" style={{ color: 'var(--text-muted)' }}>اختر من المكتبة أو ارفع من جهازك</p>
-                    </div>
-                  </div>
-                </div>
-              </motion.div>
-            )}
-
-            {/* Step 1: Scenes */}
-            {step === 1 && (
-              <motion.div key="step1" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}>
-                <div className="grid lg:grid-cols-[220px,1fr] gap-6">
+                {/* Interactive Choices */}
+                {storyType === 'interactive' && (
                   <div>
-                    <div className="card-flat p-3 space-y-1">
-                      <p className="text-xs font-bold px-2 py-1 mb-2" style={{ color: 'var(--text-muted)' }}>المشاهد ({scenes.length})</p>
-                      {scenes.map((s, i) => (
-                        <button key={s.id} onClick={() => setActiveSid(s.id)}
-                          className="w-full text-right px-3 py-2.5 rounded-xl text-xs font-semibold transition-all flex items-center gap-2"
-                          style={{ background: activeSid === s.id ? 'rgba(245,158,11,0.1)' : 'transparent', color: activeSid === s.id ? '#f59e0b' : 'var(--text-secondary)' }}>
-                          <span className="w-5 h-5 rounded-md flex items-center justify-center text-[10px] shrink-0"
-                            style={{ background: 'rgba(245,158,11,0.15)', color: '#f59e0b' }}>{i + 1}</span>
-                          <span className="truncate flex-1">{s.title?.ar || `مشهد ${i + 1}`}</span>
-                          <div className="flex gap-0.5 shrink-0">
-                            {s.id === firstSceneId && <RiPlayLine className="text-green-500 text-[10px]" />}
-                            {s.isEnd && <RiFlagLine className="text-red-400 text-[10px]" />}
-                          </div>
-                        </button>
-                      ))}
-                      <button onClick={addScene}
-                        className="w-full text-center py-2.5 rounded-xl text-xs font-semibold border border-dashed transition-colors mt-2"
-                        style={{ borderColor: 'var(--border-default)', color: 'var(--text-muted)' }}>
-                        <RiAddLine className="inline ml-1" /> مشهد جديد
-                      </button>
+                    <div className="flex items-center gap-4 mb-2">
+                      <label className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={scene.isEnding || false}
+                          onChange={(e) => updateScene(index, 'isEnding', e.target.checked)}
+                        />
+                        مشهد نهاية
+                      </label>
                     </div>
-                  </div>
-                  <div>
-                    {activeScene ? (
-                      <SceneEditor
-                        scene={activeScene}
-                        allScenes={scenes}
-                        storyType={info.storyType}
-                        onChange={updated => updateScene(activeScene.id, updated)}
-                        onDelete={() => deleteScene(activeScene.id)}
-                        isFirst={activeScene.id === firstSceneId}
-                        onSetFirst={id => setFirstSceneId(id)}
-                      />
+
+                    {scene.isEnding ? (
+                      <div className="space-y-2">
+                        <select
+                          value={scene.endingType || 'neutral'}
+                          onChange={(e) => updateScene(index, 'endingType', e.target.value)}
+                          className="input-base text-sm"
+                        >
+                          <option value="success">نهاية ناجحة 🎉</option>
+                          <option value="failure">نهاية فاشلة 💀</option>
+                          <option value="neutral">نهاية محايدة 📖</option>
+                        </select>
+                        <input
+                          type="text"
+                          value={scene.endingMessage || ''}
+                          onChange={(e) => updateScene(index, 'endingMessage', e.target.value)}
+                          className="input-base text-sm"
+                          placeholder="رسالة النهاية (اختياري)"
+                        />
+                      </div>
                     ) : (
-                      <div className="card-flat p-12 text-center">
-                        <p style={{ color: 'var(--text-muted)' }}>اختر مشهداً من القائمة</p>
+                      <div className="space-y-3">
+                        <div className="font-semibold text-sm">الاختيارات</div>
+                        {scene.choices?.map((choice, ci) => (
+                          <div key={choice.id} className="flex gap-2 items-start">
+                            <div className="flex-1 space-y-1">
+                              <input
+                                type="text"
+                                value={choice.text.ar}
+                                onChange={(e) => updateChoice(index, ci, 'text', { ...choice.text, ar: e.target.value })}
+                                className="input-base text-sm"
+                                placeholder="النص (عربي)"
+                              />
+                              <input
+                                type="text"
+                                value={choice.text.en}
+                                onChange={(e) => updateChoice(index, ci, 'text', { ...choice.text, en: e.target.value })}
+                                className="input-base text-sm"
+                                placeholder="Text (English)"
+                              />
+                              <select
+                                value={choice.nextScene}
+                                onChange={(e) => updateChoice(index, ci, 'nextScene', e.target.value)}
+                                className="input-base text-sm"
+                              >
+                                <option value="">اختر المشهد التالي</option>
+                                {scenes.map(s => (
+                                  <option key={s.id} value={s.id}>
+                                    {s.title.ar || s.title.en || `المشهد ${scenes.indexOf(s) + 1}`}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                            <button onClick={() => removeChoice(index, ci)} className="text-red-500 mt-2">
+                              <FiTrash2 />
+                            </button>
+                          </div>
+                        ))}
+                        <button
+                          onClick={() => addChoice(index)}
+                          className="text-gold-500 text-sm flex items-center gap-1 hover:underline"
+                        >
+                          <FiPlus /> إضافة اختيار
+                        </button>
                       </div>
                     )}
                   </div>
-                </div>
-              </motion.div>
-            )}
+                )}
+              </div>
+            ))}
 
-            {/* Step 2: Review */}
-            {step === 2 && (
-              <motion.div key="step2" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-6">
-                <div className="card-flat p-6">
-                  <h2 className="font-bold text-xl mb-5" style={{ color: 'var(--text-primary)' }}>مراجعة القصة</h2>
-                  <div className="flex gap-5 items-start flex-wrap">
-                    {info.cover && <img src={info.cover} alt="cover" className="w-32 h-32 rounded-2xl object-cover shrink-0" />}
-                    <div>
-                      <h3 className="text-2xl font-black mb-1" style={{ color: 'var(--text-primary)' }}>{info.title_ar}</h3>
-                      <p className="text-sm mb-3" style={{ color: 'var(--text-muted)' }}>{info.desc_ar}</p>
-                      <div className="flex flex-wrap gap-2">
-                        <span className="badge badge-gold">{info.category}</span>
-                        <span className="badge">{info.storyType === 'interactive' ? '🔀 تفاعلية' : '📖 عادية'}</span>
-                        <span className="badge">{scenes.length} مشهد</span>
-                        <span className="badge">{info.readingTime} دقائق</span>
-                        {info.storyType === 'interactive' && (
-                          <span className="badge badge-crimson">{scenes.filter(s => s.isEnd).length} نهاية</span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                <div className="flex gap-4 flex-wrap">
-                  <button onClick={() => publish(false)} disabled={saving} className="btn-secondary flex-1 justify-center py-3.5">
-                    <RiEyeLine /> حفظ كمسودة
-                  </button>
-                  <button onClick={() => publish(true)} disabled={saving} className="btn-primary flex-1 justify-center py-3.5">
-                    {saving
-                      ? <><span className="w-4 h-4 border-2 border-black/30 border-t-black rounded-full animate-spin" /> جاري النشر...</>
-                      : <><RiCheckLine /> نشر القصة 🚀</>
-                    }
-                  </button>
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
+            {/* First Scene Selection */}
+            <div>
+              <label className="block font-semibold mb-2">مشهد البداية</label>
+              <select value={firstScene} onChange={(e) => setFirstScene(e.target.value)} className="input-base">
+                <option value="">اختر مشهد البداية</option>
+                {scenes.map(scene => (
+                  <option key={scene.id} value={scene.id}>
+                    {scene.title.ar || scene.title.en || scene.id}
+                  </option>
+                ))}
+              </select>
+            </div>
 
-          {/* Navigation */}
-          <div className="flex items-center justify-between mt-8 pt-6" style={{ borderTop: '1px solid var(--border-subtle)' }}>
-            <button onClick={() => setStep(s => s - 1)} disabled={step === 0}
-              className="btn-secondary flex items-center gap-2" style={{ opacity: step === 0 ? 0.3 : 1 }}>
-              <RiArrowRightLine /> السابق
-            </button>
-            {step < 2 && (
-              <button onClick={() => setStep(s => s + 1)}
-                disabled={(step === 0 && !step1Valid) || (step === 1 && !step2Valid)}
-                className="btn-primary flex items-center gap-2">
-                التالي <RiArrowLeftLine />
+            <div className="flex justify-between">
+              <button onClick={() => setStep(1)} className="btn-secondary flex items-center gap-2">
+                <FiChevronRight />
+                السابق
               </button>
-            )}
+              <button onClick={() => setStep(3)} className="btn-primary flex items-center gap-2">
+                التالي
+                <FiChevronLeft />
+              </button>
+            </div>
+          </motion.div>
+        )}
+
+        {/* Step 3: Review & Publish */}
+        {step === 3 && (
+          <motion.div
+            key="step3"
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+            className="space-y-6"
+          >
+            <div className="card p-6 space-y-4">
+              <h2 className="text-xl font-bold">مراجعة القصة</h2>
+              
+              <div>
+                <div className="font-semibold">العنوان</div>
+                <p>{title.ar || title.en}</p>
+              </div>
+              
+              <div>
+                <div className="font-semibold">الوصف</div>
+                <p>{description.ar || description.en}</p>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <div className="font-semibold">التصنيف</div>
+                  <p>{category}</p>
+                </div>
+                <div>
+                  <div className="font-semibold">وقت القراءة</div>
+                  <p>{readingTime} دقائق</p>
+                </div>
+              </div>
+              
+              <div>
+                <div className="font-semibold">عدد المشاهد</div>
+                <p>{scenes.length} مشهد</p>
+              </div>
+            </div>
+
+            <div className="flex gap-4">
+              <button
+                onClick={() => handleSave(true)}
+                disabled={loading}
+                className="btn-primary flex-1 disabled:opacity-50"
+              >
+                {loading ? 'جاري النشر...' : 'نشر القصة'}
+              </button>
+              <button
+                onClick={() => handleSave(false)}
+                disabled={loading}
+                className="btn-secondary flex-1 disabled:opacity-50"
+              >
+                حفظ كمسودة
+              </button>
+            </div>
+
+            <div className="flex justify-between">
+              <button onClick={() => setStep(2)} className="btn-secondary flex items-center gap-2">
+                <FiChevronRight />
+                السابق
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Unsplash Modal */}
+      {showUnsplash && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70" onClick={() => setShowUnsplash(false)}>
+          <div className="bg-[var(--bg-elevated)] rounded-xl max-w-2xl w-full max-h-[80vh] overflow-hidden" onClick={(e) => e.stopPropagation()}>
+            <div className="p-4 border-b border-[var(--border-light)] flex justify-between items-center">
+              <h3 className="font-bold">اختر صورة من Unsplash</h3>
+              <button onClick={() => setShowUnsplash(false)} className="text-[var(--text-muted)] hover:text-gold-500">
+                <FiX />
+              </button>
+            </div>
+            <div className="p-4">
+              <div className="flex gap-2 mb-4">
+                <input
+                  type="text"
+                  value={unsplashQuery}
+                  onChange={(e) => setUnsplashQuery(e.target.value)}
+                  className="input-base flex-1"
+                  placeholder="ابحث عن صورة..."
+                />
+                <button onClick={searchUnsplashImages} className="btn-primary">بحث</button>
+              </div>
+              <div className="grid grid-cols-3 gap-2 max-h-96 overflow-y-auto">
+                {unsplashImages.map(img => (
+                  <img
+                    key={img.id}
+                    src={img.thumb}
+                    alt={img.alt}
+                    className="w-full h-24 object-cover rounded cursor-pointer hover:opacity-80"
+                    onClick={() => selectUnsplashImage(img.url)}
+                  />
+                ))}
+              </div>
+            </div>
           </div>
         </div>
-      </div>
+      )}
     </div>
   )
 }
+
+export default CreateStory
