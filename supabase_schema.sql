@@ -175,3 +175,28 @@ DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE FUNCTION handle_new_user();
+-- ============ الدوال الناقصة ============
+
+-- دالة زيادة الإعجابات
+CREATE OR REPLACE FUNCTION increment_likes(story_id UUID)
+RETURNS VOID AS $$
+BEGIN
+  UPDATE stories SET likes = likes + 1 WHERE id = story_id;
+END;
+$$ LANGUAGE plpgsql;
+
+-- دالة إنقاص الإعجابات
+CREATE OR REPLACE FUNCTION decrement_likes(story_id UUID)
+RETURNS VOID AS $$
+BEGIN
+  UPDATE stories SET likes = GREATEST(likes - 1, 0) WHERE id = story_id;
+END;
+$$ LANGUAGE plpgsql;
+
+-- دالة زيادة المشاهدات (موجودة لكن نضيفها للتأكيد)
+CREATE OR REPLACE FUNCTION increment_views(story_id UUID)
+RETURNS VOID AS $$
+BEGIN
+  UPDATE stories SET views = views + 1 WHERE id = story_id;
+END;
+$$ LANGUAGE plpgsql;
