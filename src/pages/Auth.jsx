@@ -1,250 +1,337 @@
-import { useState } from 'react'
-import { useNavigate, Link } from 'react-router-dom'
-import { motion, AnimatePresence } from 'framer-motion'
-import {
-  RiBookOpenLine, RiMailLine, RiLockLine,
-  RiUser3Line, RiEyeLine, RiEyeOffLine,
-  RiArrowLeftLine, RiCheckLine, RiPhoneLine,
-} from 'react-icons/ri'
-import { authHelpers, supabase } from '../lib/supabase'
+import { useState, useEffect } from 'react'
+import { useNavigate, useSearchParams, Link } from 'react-router-dom'
+import { useAuth } from '../contexts/AuthContext'
+import { motion } from 'framer-motion'
+import { FiMail, FiLock, FiUser, FiUserPlus, FiEye, FiEyeOff, FiCheckCircle, FiAlertCircle } from 'react-icons/fi'
+import { profileHelpers } from '../lib/supabase'
+import { useDebounce } from '../hooks/useDebounce'
 
-export default function Auth() {
+const Auth = () => {
+  const [searchParams] = useSearchParams()
   const navigate = useNavigate()
-  const [mode,    setMode]    = useState('signin')
+  const { signUp, signIn, resetPassword, user } = useAuth()
+  
+  const [mode, setMode] = useState(searchParams.get('mode') === 'signup' ? 'signup' : 'login')
+  const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
-  const [error,   setError]   = useState('')
-  const [success, setSuccess] = useState('')
-  const [showPw,  setShowPw]  = useState(false)
+  const [resetMode, setResetMode] = useState(false)
+  
+  // Form states
+  const [fullName, setFullName] = useState('')
+  const [username, setUsername] = useState('')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [resetEmail, setResetEmail] = useState('')
+  
+  // Validation states
+  const [usernameAvailable, setUsernameAvailable] = useState(null)
+  const [checkingUsername, setCheckingUsername] = useState(false)
+  const debouncedUsername = useDebounce(username, 500)
+  
+  // Errors
+  const [errors, setErrors] = useState({})
 
-  const [form, setForm] = useState({
-    email: '', password: '', fullName: '', username: '', phone: '',
-  })
-
-  const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }))
-
-  async function handleSubmit(e) {
-    e.preventDefault()
-    setError('')
-    setSuccess('')
-    setLoading(true)
-
-    if (mode === 'signin') {
-      const { error } = await authHelpers.signIn({ email: form.email, password: form.password })
-      if (error) setError('بيانات الدخول غير صحيحة')
-      else navigate('/')
-    } else {
-      if (!form.fullName.trim()) { setError('الاسم الكامل مطلوب'); setLoading(false); return }
-      if (!form.phone.trim()) { setError('رقم الهاتف مطلوب'); setLoading(false); return }
-      if (!/^[0-9+\s]{7,15}$/.test(form.phone.trim())) { setError('رقم الهاتف غير صحيح'); setLoading(false); return }
-      if (form.password.length < 6) { setError('كلمة المرور يجب أن تكون 6 أحرف على الأقل'); setLoading(false); return }
-
-      const { data, error } = await authHelpers.signUp({
-        email: form.email,
-        password: form.password,
-        fullName: form.fullName,
-        username: form.username || form.email.split('@')[0],
-      })
-
-      if (error) { setError(error.message || 'حدث خطأ. حاول مرة أخرى.'); setLoading(false); return }
-
-      // حفظ رقم الهاتف في الـ profile
-      if (data?.user?.id) {
-        await supabase.from('profiles').update({ phone: form.phone }).eq('id', data.user.id)
-      }
-
-      setSuccess('🎉 أهلاً بك في قصة واختار! تم إنشاء حسابك بنجاح. تحقق من بريدك الإلكتروني لتأكيد الحساب وابدأ رحلة القراءة.')
+  // Redirect if already logged in
+  useEffect(() => {
+    if (user) {
+      navigate('/home')
     }
-    setLoading(false)
+  }, [user, navigate])
+
+  // Check username availability
+  useEffect(() => {
+    if (debouncedUsername.length >= 3 && mode === 'signup') {
+      const checkUsername = async () => {
+        setCheckingUsername(true)
+        try {
+          const isAvailable = await profileHelpers.checkUsernameUnique(debouncedUsername)
+          setUsernameAvailable(isAvailable)
+          if (!isAvailable) {
+            setErrors(prev => ({ ...prev, username: 'اسم المستخدم موجود بالفعل' }))
+          } else {
+            setErrors(prev => ({ ...prev, username: null }))
+          }
+        } catch (error) {
+          console.error('Error checking username:', error)
+        } finally {
+          setCheckingUsername(false)
+        }
+      }
+      checkUsername()
+    }
+  }, [debouncedUsername, mode])
+
+  const validateForm = () => {
+    const newErrors = {}
+    
+    if (mode === 'signup') {
+      if (!fullName.trim()) newErrors.fullName = 'الاسم الكامل مطلوب'
+      if (!username.trim()) newErrors.username = 'اسم المستخدم مطلوب'
+      if (username.length < 3) newErrors.username = 'اسم المستخدم يجب أن يكون 3 أحرف على الأقل'
+      if (usernameAvailable === false) newErrors.username = 'اسم المستخدم موجود بالفعل'
+      if (!/^[a-zA-Z0-9_]+$/.test(username)) newErrors.username = 'يسمح فقط بالحروف الإنجليزية والأرقام والشرطة السفلية'
+    }
+    
+    if (!email.trim()) newErrors.email = 'البريد الإلكتروني مطلوب'
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) newErrors.email = 'البريد الإلكتروني غير صحيح'
+    
+    if (!resetMode) {
+      if (!password) newErrors.password = 'كلمة المرور مطلوبة'
+      if (password.length < 6) newErrors.password = 'كلمة المرور يجب أن تكون 6 أحرف على الأقل'
+    }
+    
+    setErrors(newErrors)
+    return Object.keys(newErrors).length === 0
+  }
+
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    if (!validateForm()) return
+    
+    setLoading(true)
+    try {
+      if (resetMode) {
+        await resetPassword(resetEmail)
+        setResetMode(false)
+        setResetEmail('')
+      } else if (mode === 'signup') {
+        await signUp({ email, password, fullName, username })
+        navigate('/home')
+      } else {
+        await signIn({ email, password })
+        navigate('/home')
+      }
+    } catch (error) {
+      console.error('Auth error:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  if (resetMode) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-4">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="max-w-md w-full bg-[var(--bg-elevated)] rounded-2xl shadow-xl p-8"
+        >
+          <div className="text-center mb-8">
+            <h1 className="text-2xl font-bold mb-2">إعادة تعيين كلمة المرور</h1>
+            <p className="text-[var(--text-muted)] text-sm">
+              أدخل بريدك الإلكتروني وسنرسل لك رابط إعادة التعيين
+            </p>
+          </div>
+
+          <form onSubmit={handleSubmit} className="space-y-6">
+            <div>
+              <label className="block text-sm font-semibold mb-2">البريد الإلكتروني</label>
+              <div className="relative">
+                <FiMail className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
+                <input
+                  type="email"
+                  value={resetEmail}
+                  onChange={(e) => setResetEmail(e.target.value)}
+                  className="input-base pr-10"
+                  placeholder="example@email.com"
+                  required
+                />
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="btn-primary w-full disabled:opacity-50"
+            >
+              {loading ? 'جاري الإرسال...' : 'إرسال رابط إعادة التعيين'}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setResetMode(false)}
+              className="w-full text-center text-[var(--text-muted)] hover:text-gold-500 transition-colors"
+            >
+              العودة إلى تسجيل الدخول
+            </button>
+          </form>
+        </motion.div>
+      </div>
+    )
   }
 
   return (
-    <div className="min-h-screen flex" style={{ background: 'var(--bg-base)' }}>
-
-      {/* Left panel */}
-      <div className="hidden lg:flex lg:w-1/2 relative overflow-hidden flex-col items-center justify-center p-12"
-        style={{ background: 'linear-gradient(145deg, #0f0d0a 0%, #1a1714 50%, #211e18 100%)' }}>
-        <div className="absolute inset-0">
-          <div className="absolute top-1/4 right-1/4 w-64 h-64 rounded-full opacity-20"
-            style={{ background: 'radial-gradient(circle, #f59e0b, transparent 70%)' }} />
-          <div className="absolute bottom-1/4 left-1/4 w-48 h-48 rounded-full opacity-15"
-            style={{ background: 'radial-gradient(circle, #ef4444, transparent 70%)' }} />
+    <div className="min-h-screen flex items-center justify-center p-4">
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="max-w-md w-full bg-[var(--bg-elevated)] rounded-2xl shadow-xl overflow-hidden"
+      >
+        {/* Tabs */}
+        <div className="flex border-b border-[var(--border-light)]">
+          <button
+            onClick={() => { setMode('login'); setErrors({}) }}
+            className={`flex-1 py-4 text-center font-semibold transition-all duration-300 ${
+              mode === 'login'
+                ? 'text-gold-500 border-b-2 border-gold-500'
+                : 'text-[var(--text-muted)] hover:text-gold-500'
+            }`}
+          >
+            تسجيل الدخول
+          </button>
+          <button
+            onClick={() => { setMode('signup'); setErrors({}) }}
+            className={`flex-1 py-4 text-center font-semibold transition-all duration-300 ${
+              mode === 'signup'
+                ? 'text-gold-500 border-b-2 border-gold-500'
+                : 'text-[var(--text-muted)] hover:text-gold-500'
+            }`}
+          >
+            إنشاء حساب
+          </button>
         </div>
-        <div className="relative text-center max-w-sm">
-          <motion.div animate={{ y: [0, -10, 0] }} transition={{ duration: 4, repeat: Infinity }}
-            className="w-24 h-24 rounded-3xl flex items-center justify-center mx-auto mb-8"
-            style={{ background: 'linear-gradient(135deg, #f59e0b, #d97706)', boxShadow: '0 20px 60px rgba(245,158,11,0.4)' }}>
-            <RiBookOpenLine className="text-black" style={{ fontSize: '3rem' }} />
-          </motion.div>
-          <h1 className="text-4xl font-black mb-4 text-white">قصة واختار</h1>
-          <p className="text-lg mb-8" style={{ color: '#a38f67', lineHeight: 1.8 }}>
-            كل اختيار تتخذه يصنع حكاية مختلفة. انضم وابدأ رحلتك.
-          </p>
-          <div className="space-y-3">
-            {['رحلة إلى المجهول 🌑', 'سر القصر القديم 🏰', 'في زمن الفراعنة ⚱️'].map((t, i) => (
-              <motion.div key={t} initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: 0.5 + i * 0.2 }}
-                className="flex items-center gap-3 px-4 py-3 rounded-xl text-right"
-                style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)' }}>
-                <div className="w-2 h-2 rounded-full shrink-0" style={{ background: '#f59e0b' }} />
-                <span className="text-sm text-white font-medium">{t}</span>
-              </motion.div>
-            ))}
+
+        <div className="p-8">
+          <form onSubmit={handleSubmit} className="space-y-5">
+            {mode === 'signup' && (
+              <>
+                <div>
+                  <label className="block text-sm font-semibold mb-2">الاسم الكامل</label>
+                  <div className="relative">
+                    <FiUser className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
+                    <input
+                      type="text"
+                      value={fullName}
+                      onChange={(e) => setFullName(e.target.value)}
+                      className={`input-base pr-10 ${errors.fullName ? 'border-red-500' : ''}`}
+                      placeholder="أحمد محمد"
+                    />
+                  </div>
+                  {errors.fullName && (
+                    <p className="text-red-500 text-xs mt-1 flex items-center gap-1">
+                      <FiAlertCircle /> {errors.fullName}
+                    </p>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold mb-2">اسم المستخدم</label>
+                  <div className="relative">
+                    <FiUserPlus className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
+                    <input
+                      type="text"
+                      value={username}
+                      onChange={(e) => setUsername(e.target.value.toLowerCase())}
+                      className={`input-base pr-10 ${errors.username ? 'border-red-500' : ''}`}
+                      placeholder="ahmed123"
+                    />
+                    {checkingUsername && (
+                      <div className="absolute left-3 top-1/2 -translate-y-1/2">
+                        <div className="w-4 h-4 border-2 border-gold-500 border-t-transparent rounded-full animate-spin" />
+                      </div>
+                    )}
+                    {usernameAvailable === true && username.length >= 3 && (
+                      <FiCheckCircle className="absolute left-3 top-1/2 -translate-y-1/2 text-green-500" />
+                    )}
+                  </div>
+                  {errors.username && (
+                    <p className="text-red-500 text-xs mt-1 flex items-center gap-1">
+                      <FiAlertCircle /> {errors.username}
+                    </p>
+                  )}
+                  {usernameAvailable === true && username.length >= 3 && (
+                    <p className="text-green-500 text-xs mt-1">✓ اسم المستخدم متاح</p>
+                  )}
+                </div>
+              </>
+            )}
+
+            <div>
+              <label className="block text-sm font-semibold mb-2">البريد الإلكتروني</label>
+              <div className="relative">
+                <FiMail className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className={`input-base pr-10 ${errors.email ? 'border-red-500' : ''}`}
+                  placeholder="example@email.com"
+                />
+              </div>
+              {errors.email && (
+                <p className="text-red-500 text-xs mt-1 flex items-center gap-1">
+                  <FiAlertCircle /> {errors.email}
+                </p>
+              )}
+            </div>
+
+            <div>
+              <label className="block text-sm font-semibold mb-2">كلمة المرور</label>
+              <div className="relative">
+                <FiLock className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className={`input-base pr-10 ${errors.password ? 'border-red-500' : ''}`}
+                  placeholder="••••••••"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)] hover:text-gold-500"
+                >
+                  {showPassword ? <FiEyeOff /> : <FiEye />}
+                </button>
+              </div>
+              {errors.password && (
+                <p className="text-red-500 text-xs mt-1 flex items-center gap-1">
+                  <FiAlertCircle /> {errors.password}
+                </p>
+              )}
+              {mode === 'signup' && (
+                <p className="text-[var(--text-muted)] text-xs mt-1">يجب أن تكون 6 أحرف على الأقل</p>
+              )}
+            </div>
+
+            {mode === 'login' && (
+              <button
+                type="button"
+                onClick={() => setResetMode(true)}
+                className="text-sm text-gold-500 hover:text-gold-600"
+              >
+                نسيت كلمة المرور؟
+              </button>
+            )}
+
+            <button
+              type="submit"
+              disabled={loading || (mode === 'signup' && usernameAvailable === false)}
+              className="btn-primary w-full disabled:opacity-50"
+            >
+              {loading 
+                ? 'جاري المعالجة...' 
+                : mode === 'signup' 
+                  ? 'إنشاء حساب' 
+                  : 'تسجيل الدخول'}
+            </button>
+          </form>
+
+          <div className="mt-6 pt-6 border-t border-[var(--border-light)] text-center">
+            <p className="text-[var(--text-muted)] text-sm">
+              {mode === 'login' ? 'ليس لديك حساب؟' : 'لديك حساب بالفعل؟'}
+              <button
+                onClick={() => { setMode(mode === 'login' ? 'signup' : 'login'); setErrors({}) }}
+                className="mr-1 text-gold-500 hover:underline"
+              >
+                {mode === 'login' ? 'إنشاء حساب جديد' : 'تسجيل الدخول'}
+              </button>
+            </p>
           </div>
         </div>
-      </div>
-
-      {/* Right panel */}
-      <div className="flex-1 flex flex-col items-center justify-center p-6 md:p-12 relative">
-        <div className="absolute top-6 inset-x-6 flex items-center justify-between">
-          <Link to="/" className="flex items-center gap-2 btn-ghost px-3 py-2 rounded-xl lg:hidden">
-            <div className="w-7 h-7 rounded-lg flex items-center justify-center"
-              style={{ background: 'linear-gradient(135deg, #f59e0b, #d97706)' }}>
-              <RiBookOpenLine className="text-black text-sm" />
-            </div>
-            <span className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>قصة واختار</span>
-          </Link>
-          <Link to="/" className="btn-ghost hidden lg:flex items-center gap-1 text-sm" style={{ color: 'var(--text-muted)' }}>
-            <RiArrowLeftLine /> العودة للرئيسية
-          </Link>
-        </div>
-
-        <div className="w-full max-w-md">
-          <AnimatePresence mode="wait">
-            <motion.div key={mode} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -20 }} transition={{ duration: 0.3 }}>
-
-              <div className="mb-8">
-                <h2 className="text-3xl font-black mb-2" style={{ color: 'var(--text-primary)' }}>
-                  {mode === 'signin' ? 'مرحبًا بعودتك 👋' : 'انضم إلينا 🎉'}
-                </h2>
-                <p style={{ color: 'var(--text-muted)' }}>
-                  {mode === 'signin' ? 'سجل دخولك للوصول لقصصك ومكتبتك' : 'أنشئ حسابًا مجانيًا وابدأ رحلة القراءة'}
-                </p>
-              </div>
-
-              {/* Success */}
-              <AnimatePresence>
-                {success && (
-                  <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
-                    className="flex items-start gap-3 p-4 rounded-xl mb-6"
-                    style={{ background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.2)' }}>
-                    <RiCheckLine className="text-green-500 mt-0.5 shrink-0 text-lg" />
-                    <p className="text-sm leading-relaxed" style={{ color: '#22c55e' }}>{success}</p>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-
-              {/* Error */}
-              <AnimatePresence>
-                {error && (
-                  <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
-                    className="p-4 rounded-xl mb-6 text-sm"
-                    style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', color: '#ef4444' }}>
-                    {error}
-                  </motion.div>
-                )}
-              </AnimatePresence>
-
-              <form onSubmit={handleSubmit} className="space-y-4">
-                {mode === 'signup' && (
-                  <>
-                    {/* الاسم الكامل */}
-                    <div>
-                      <label className="block text-sm font-semibold mb-1.5" style={{ color: 'var(--text-secondary)' }}>
-                        الاسم الكامل *
-                      </label>
-                      <div className="relative">
-                        <RiUser3Line className="absolute right-3.5 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-muted)' }} />
-                        <input type="text" placeholder="محمد أحمد" value={form.fullName}
-                          onChange={set('fullName')} required className="input-base pr-10" />
-                      </div>
-                    </div>
-
-                    {/* رقم الهاتف */}
-                    <div>
-                      <label className="block text-sm font-semibold mb-1.5" style={{ color: 'var(--text-secondary)' }}>
-                        رقم الهاتف *
-                      </label>
-                      <div className="relative">
-                        <RiPhoneLine className="absolute right-3.5 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-muted)' }} />
-                        <input type="tel" placeholder="01012345678" value={form.phone}
-                          onChange={set('phone')} required className="input-base pr-10" dir="ltr" />
-                      </div>
-                    </div>
-
-                    {/* اسم المستخدم */}
-                    <div>
-                      <label className="block text-sm font-semibold mb-1.5" style={{ color: 'var(--text-secondary)' }}>
-                        اسم المستخدم (اختياري)
-                      </label>
-                      <div className="relative">
-                        <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-sm" style={{ color: 'var(--text-muted)' }}>@</span>
-                        <input type="text" placeholder="username" value={form.username}
-                          onChange={set('username')} className="input-base pr-9" dir="ltr" />
-                      </div>
-                    </div>
-                  </>
-                )}
-
-                {/* الإيميل */}
-                <div>
-                  <label className="block text-sm font-semibold mb-1.5" style={{ color: 'var(--text-secondary)' }}>
-                    البريد الإلكتروني *
-                  </label>
-                  <div className="relative">
-                    <RiMailLine className="absolute right-3.5 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-muted)' }} />
-                    <input type="email" placeholder="name@example.com" value={form.email}
-                      onChange={set('email')} required className="input-base pr-10" dir="ltr" />
-                  </div>
-                </div>
-
-                {/* كلمة المرور */}
-                <div>
-                  <label className="block text-sm font-semibold mb-1.5" style={{ color: 'var(--text-secondary)' }}>
-                    كلمة المرور *
-                  </label>
-                  <div className="relative">
-                    <RiLockLine className="absolute right-3.5 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-muted)' }} />
-                    <input type={showPw ? 'text' : 'password'}
-                      placeholder={mode === 'signup' ? '٦ أحرف على الأقل' : '••••••••'}
-                      value={form.password} onChange={set('password')} required
-                      className="input-base pr-10 pl-10" dir="ltr" />
-                    <button type="button" onClick={() => setShowPw(s => !s)}
-                      className="absolute left-3.5 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-muted)' }}>
-                      {showPw ? <RiEyeOffLine /> : <RiEyeLine />}
-                    </button>
-                  </div>
-                </div>
-
-                <button type="submit" disabled={loading}
-                  className="btn-primary w-full justify-center py-3.5 mt-2"
-                  style={{ opacity: loading ? 0.7 : 1 }}>
-                  {loading ? (
-                    <span className="flex items-center gap-2">
-                      <span className="w-4 h-4 border-2 border-black/30 border-t-black rounded-full animate-spin" />
-                      {mode === 'signin' ? 'جاري الدخول...' : 'جاري الإنشاء...'}
-                    </span>
-                  ) : (
-                    mode === 'signin' ? 'تسجيل الدخول' : 'إنشاء الحساب'
-                  )}
-                </button>
-              </form>
-
-              {/* Toggle */}
-              <div className="text-center mt-6">
-                <span className="text-sm" style={{ color: 'var(--text-muted)' }}>
-                  {mode === 'signin' ? 'ليس لديك حساب؟' : 'لديك حساب بالفعل؟'}
-                  {' '}
-                  <button onClick={() => { setMode(m => m === 'signin' ? 'signup' : 'signin'); setError(''); setSuccess('') }}
-                    className="font-bold transition-colors" style={{ color: '#f59e0b' }}>
-                    {mode === 'signin' ? 'إنشاء حساب' : 'تسجيل الدخول'}
-                  </button>
-                </span>
-              </div>
-            </motion.div>
-          </AnimatePresence>
-        </div>
-      </div>
+      </motion.div>
     </div>
   )
 }
+
+export default Auth
