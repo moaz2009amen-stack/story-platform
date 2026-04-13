@@ -12,18 +12,22 @@ const ResetPassword = () => {
   const [confirmPassword, setConfirmPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [isValidToken, setIsValidToken] = useState(true)
 
   useEffect(() => {
     // التحقق من وجود رمز إعادة التعيين
     const accessToken = searchParams.get('access_token')
     if (!accessToken) {
       toast.error('رابط إعادة التعيين غير صالح')
-      navigate('/auth')
+      setIsValidToken(false)
+      setTimeout(() => navigate('/auth'), 2000)
     }
   }, [searchParams, navigate])
 
   const handleSubmit = async (e) => {
     e.preventDefault()
+    
+    if (!isValidToken) return
     
     if (password !== confirmPassword) {
       toast.error('كلمتا المرور غير متطابقتين')
@@ -41,12 +45,24 @@ const ResetPassword = () => {
       if (error) throw error
       
       toast.success('تم تغيير كلمة المرور بنجاح')
-      navigate('/auth')
+      setTimeout(() => navigate('/auth'), 2000)
     } catch (error) {
-      toast.error(error.message)
+      toast.error(error.message || 'حدث خطأ أثناء تغيير كلمة المرور')
     } finally {
       setLoading(false)
     }
+  }
+
+  if (!isValidToken) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-4">
+        <div className="text-center">
+          <div className="text-red-500 text-6xl mb-4">⚠️</div>
+          <h1 className="text-2xl font-bold mb-2">رابط غير صالح</h1>
+          <p className="text-[var(--text-muted)]">جاري تحويلك إلى صفحة تسجيل الدخول...</p>
+        </div>
+      </div>
+    )
   }
 
   return (
